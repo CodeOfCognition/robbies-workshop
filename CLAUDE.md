@@ -40,6 +40,9 @@ All AI agents must be built in **LangGraph (Python)**. This is a separate servic
 
 At any given time, parts of the codebase may be half-complete or out of compliance with these guidelines. That means they're **on hold**, not broken. Don't "fix", refactor, or remove things that look incomplete without asking first.
 
+## GitHub Integration
+You have access to the GitHub MCP. Use this to maintain commits, branches, and PRs. Note that every time you push to main though, it will redeploy the app.
+
 ## Collaboration Style
 
 The owner is an experienced developer and AI engineer. When working on this project:
