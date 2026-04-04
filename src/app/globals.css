@@ -1,0 +1,186 @@
+@import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap");
+
+@theme {
+  --font-display: "Bebas Neue", sans-serif;
+  --font-body: "Outfit", sans-serif;
+  --font-mono: "Space Mono", monospace;
+
+  --color-bg: #0c0c0c;
+  --color-surface: #161616;
+  --color-surface-raised: #1e1e1e;
+  --color-surface-bright: #282828;
+  --color-border: #2a2a2a;
+  --color-border-bright: #3a3a3a;
+  --color-text: #e8e8e8;
+  --color-text-dim: #999999;
+  --color-text-faint: #777777;
+
+  --color-amber: #f59e0b;
+  --color-amber-dim: #b45309;
+  --color-amber-glow: rgba(245, 158, 11, 0.15);
+
+  --color-cat-stompbox: #f97316;
+  --color-cat-modulation: #a855f7;
+  --color-cat-delay: #3b82f6;
+  --color-cat-reverb: #10b981;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  background: var(--color-bg);
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--color-bg);
+  color: var(--color-text);
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle noise texture overlay */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-bright);
+  border-radius: 2px;
+}
+
+/* Page transitions */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.3s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+/* Stagger children */
+.stagger > * {
+  animation: fadeUp 0.3s ease-out forwards;
+  opacity: 0;
+}
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 40ms; }
+.stagger > *:nth-child(3) { animation-delay: 80ms; }
+.stagger > *:nth-child(4) { animation-delay: 120ms; }
+.stagger > *:nth-child(5) { animation-delay: 160ms; }
+.stagger > *:nth-child(6) { animation-delay: 200ms; }
+.stagger > *:nth-child(7) { animation-delay: 240ms; }
+.stagger > *:nth-child(8) { animation-delay: 280ms; }
+.stagger > *:nth-child(9) { animation-delay: 320ms; }
+.stagger > *:nth-child(10) { animation-delay: 360ms; }
+
+/* LED indicator glow */
+.led-glow {
+  box-shadow: 0 0 8px var(--color-amber), 0 0 20px var(--color-amber-glow);
+}
+
+/* Zoom in animation for pedal detail overlay */
+@keyframes zoomIn {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-zoom-in {
+  animation: zoomIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Signal chain horizontal scrollbar */
+.signal-chain-wrapper::-webkit-scrollbar {
+  height: 0;
+  display: none;
+}
+.signal-chain-wrapper {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Chat markdown styles */
+.chat-markdown p {
+  margin-bottom: 0.5em;
+}
+.chat-markdown p:last-child {
+  margin-bottom: 0;
+}
+.chat-markdown strong {
+  color: var(--color-text);
+  font-weight: 700;
+}
+.chat-markdown ul, .chat-markdown ol {
+  margin: 0.5em 0;
+  padding-left: 1.2em;
+}
+.chat-markdown li {
+  margin-bottom: 0.25em;
+}
+.chat-markdown code {
+  background: var(--color-surface-raised);
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: var(--font-mono);
+}
+.chat-markdown pre {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.75em;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.chat-markdown pre code {
+  background: none;
+  padding: 0;
+}
+.chat-markdown h3, .chat-markdown h4 {
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0.75em 0 0.25em;
+}
+.chat-markdown a {
+  color: #a78bfa;
+  text-decoration: underline;
+}

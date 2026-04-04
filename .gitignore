@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+Spotify*/
+
+# next.js
+.next/
+out/
+
+# build
+build/
+dist/
+
+# env files
+.env
+.env.*
+!.env.example
+
+# debug
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

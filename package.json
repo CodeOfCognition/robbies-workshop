@@ -1,0 +1,30 @@
+{
+  "name": "guitar-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^3.0.53",
+    "@ai-sdk/react": "^3.0.143",
+    "ai": "^6.0.141",
+    "lucide-react": "^0.469.0",
+    "next": "^15.3.1",
+    "next-auth": "^5.0.0-beta.30",
+    "openai": "^6.33.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.2",
+    "@types/node": "^22.15.3",
+    "@types/react": "^19.1.2",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^5.8.3"
+  }
+}

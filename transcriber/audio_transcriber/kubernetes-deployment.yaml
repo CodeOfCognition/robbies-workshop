@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: speech-to-text-app
+  labels:
+    app: speech-to-text
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: speech-to-text
+  template:
+    metadata:
+      labels:
+        app: speech-to-text
+    spec:
+      containers:
+      - name: speech-to-text
+        image: speech-to-text-app:latest
+        imagePullPolicy: Never  # For local images
+        ports:
+        - containerPort: 5000
+        env:
+        - name: OPENAI_API_KEY
+          value: "your-openai-api-key"  # Replace with your actual API key or use Kubernetes secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: speech-to-text-service
+spec:
+  selector:
+    app: speech-to-text
+  ports:
+  - port: 80
+    targetPort: 5000
+  type: NodePort  # This makes the service accessible from outside the cluster

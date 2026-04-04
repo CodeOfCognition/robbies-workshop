@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Speech to Text App</title>
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" />
+    <!-- Custom CSS for Dark Mode and Chat Bubbles -->
+    <style>
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+        }
+
+        .container {
+            max-width: 600px;
+            margin-top: 50px;
+        }
+
+        #recordButton {
+            margin-bottom: 20px;
+        }
+
+        .chat-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .chat-bubble {
+            padding: 10px 15px;
+            border-radius: 20px;
+            max-width: 100%;
+            word-wrap: break-word;
+            background-color: #424242;
+            color: white;
+            flex: 1;
+        }
+
+        .copy-icon {
+            margin-left: 10px;
+            cursor: pointer;
+            color: #e0e0e0;
+        }
+
+        .copy-icon:hover {
+            color: #ffffff;
+        }
+
+        .transcription-list {
+            display: flex;
+            flex-direction: column;
+        }
+
+        #status {
+            margin-bottom: 20px;
+        }
+
+        .centered {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container centered">
+        <h1>Speech to Text App</h1>
+        <button id="recordButton" class="btn btn-primary">Start Recording</button>
+        <p id="status">Click the button to start recording.</p>
+        <div class="transcription-list">
+            {% for transcription in transcriptions %}
+            <div class="chat-row">
+                <div class="chat-bubble">
+                    {{ transcription }}
+                </div>
+                <i class="bi bi-clipboard copy-icon" onclick="copyToClipboard(this)" title="Copy to clipboard"></i>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Bootstrap JS (Optional, for future enhancements) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- JavaScript Code -->
+    <script>
+        let isRecording = false;
+        let mediaRecorder;
+        let audioChunks = [];
+
+        document.getElementById('recordButton').addEventListener('click', function () {
+            if (!isRecording) {
+                startRecording();
+            } else {
+                stopRecording();
+            }
+        });
+
+        function startRecording() {
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    mediaRecorder = new MediaRecorder(stream);
+                    mediaRecorder.start();
+                    audioChunks = [];
+
+                    mediaRecorder.addEventListener('dataavailable', event => {
+                        audioChunks.push(event.data);
+                    });
+
+                    mediaRecorder.addEventListener('stop', () => {
+                        let audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                        let formData = new FormData();
+                        formData.append('audio_data', audioBlob, 'recording.wav');
+
+                        fetch('/upload', {
+                            method: 'POST',
+                            body: formData
+                        })
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error('Network response was not ok');
+                                }
+                                return response.text();
+                            })
+                            .then(text => {
+                                let container = document.querySelector('.transcription-list');
+
+                                // Create the chat row
+                                let chatRow = document.createElement('div');
+                                chatRow.classList.add('chat-row');
+
+                                // Create the chat bubble
+                                let bubble = document.createElement('div');
+                                bubble.classList.add('chat-bubble');
+                                bubble.textContent = text;
+
+                                // Create the copy icon
+                                let copyIcon = document.createElement('i');
+                                copyIcon.classList.add('bi', 'bi-clipboard', 'copy-icon');
+                                copyIcon.onclick = function () { copyToClipboard(copyIcon); };
+                                copyIcon.title = 'Copy to clipboard';
+
+                                // Append bubble and icon to the chat row
+                                chatRow.appendChild(bubble);
+                                chatRow.appendChild(copyIcon);
+
+                                // Insert the new chat row at the top
+                                container.insertBefore(chatRow, container.firstChild);
+
+                                document.getElementById('status').textContent = 'Transcription completed.';
+                            })
+                            .catch(error => {
+                                console.error(error);
+                                document.getElementById('status').textContent = 'An error occurred during transcription.';
+                            });
+                    });
+
+                    isRecording = true;
+                    document.getElementById('status').textContent = 'Recording...';
+                    document.getElementById('recordButton').textContent = 'Stop Recording';
+                })
+                .catch(error => {
+                    console.error(error);
+                    document.getElementById('status').textContent = 'Microphone access denied.';
+                });
+        }
+
+        function stopRecording() {
+            mediaRecorder.stop();
+            isRecording = false;
+            document.getElementById('status').textContent = 'Processing transcription...';
+            document.getElementById('recordButton').textContent = 'Start Recording';
+        }
+
+        function copyToClipboard(iconElement) {
+            let bubble = iconElement.previousElementSibling;
+            let textToCopy = bubble.textContent;
+            navigator.clipboard.writeText(textToCopy).then(function () {
+                // Change icon to checkmark
+                iconElement.classList.remove('bi-clipboard');
+                iconElement.classList.add('bi-check2');
+                // Revert back to clipboard icon after 2 seconds
+                setTimeout(function () {
+                    iconElement.classList.remove('bi-check2');
+                    iconElement.classList.add('bi-clipboard');
+                }, 2000);
+            }, function (err) {
+                console.error('Could not copy text: ', err);
+            });
+        }
+    </script>
+</body>
+
+</html>
