@@ -29,7 +29,7 @@ export default function Home() {
           <div className="flex items-center gap-3 mb-1">
             <div className="w-2 h-2 rounded-full bg-[var(--color-amber)] led-glow" />
             <h1 className="font-[family-name:var(--font-display)] text-4xl tracking-wide text-[var(--color-text)]">
-              ROB&apos;S TOOLS
+              ROBBIE&apos;S WORKSHOP
             </h1>
           </div>
           <button
