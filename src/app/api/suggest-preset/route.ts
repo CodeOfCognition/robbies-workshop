@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const CLOUD_RUN_URL = process.env.CLOUD_RUN_URL || "http://localhost:8000";
-const CLOUD_RUN_API_KEY = process.env.CLOUD_RUN_API_KEY || "";
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
+const WORKSHOP_BACKEND_API_KEY = process.env.WORKSHOP_BACKEND_API_KEY || "";
 
 export async function POST(req: NextRequest) {
-    if (!CLOUD_RUN_URL || !CLOUD_RUN_API_KEY) {
+    if (!BACKEND_URL || !WORKSHOP_BACKEND_API_KEY) {
         return NextResponse.json(
             { error: "AI backend not configured" },
             { status: 503 }
@@ -14,11 +14,11 @@ export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
 
-        const response = await fetch(`${CLOUD_RUN_URL}/suggest-preset`, {
+        const response = await fetch(`${BACKEND_URL}/suggest-preset`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "X-API-Key": CLOUD_RUN_API_KEY,
+                "X-API-Key": WORKSHOP_BACKEND_API_KEY,
             },
             body: JSON.stringify(body),
         });

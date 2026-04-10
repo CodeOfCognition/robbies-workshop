@@ -1,34 +1,36 @@
 """
-ToneBoard AI Backend — FastAPI + LangGraph
-Suggests Mustang Micro Plus amp presets based on song/genre/tone.
+Robbie's Workshop — Backend API (FastAPI + LangGraph)
+Hosts AI agents and heavy processing (transcription, preset suggestions, etc.)
 """
 
 import os
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import FastAPI, HTTPException, Header, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
+import openai
 from agent import suggest_preset_agent
 
-app = FastAPI(title="ToneBoard API", version="0.1.0")
+app = FastAPI(title="Robbie's Workshop API", version="0.1.0")
 
 # CORS — only allow the Vercel deployment
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://robbies-workshop.vercel.app,http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["POST", "GET"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# API key auth
-TONEBOARD_API_KEY = os.getenv("TONEBOARD_API_KEY", "")
+# API keys
+WORKSHOP_BACKEND_API_KEY = os.getenv("WORKSHOP_BACKEND_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 
 def verify_api_key(x_api_key: str = Header(...)):
-    if not TONEBOARD_API_KEY:
+    if not WORKSHOP_BACKEND_API_KEY:
         raise HTTPException(status_code=500, detail="API key not configured")
-    if x_api_key != TONEBOARD_API_KEY:
+    if x_api_key != WORKSHOP_BACKEND_API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API key")
     return True
 
@@ -49,7 +51,7 @@ class PresetResponse(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "toneboard-api"}
+    return {"status": "ok", "service": "robbies-workshop-api"}
 
 
 @app.post("/suggest-preset", response_model=PresetResponse, dependencies=[Depends(verify_api_key)])
@@ -63,5 +65,26 @@ async def suggest_preset(request: PresetRequest):
             notes=request.notes,
         )
         return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/transcribe", dependencies=[Depends(verify_api_key)])
+async def transcribe(audio_data: UploadFile = File(...)):
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+
+    try:
+        client = openai.OpenAI(api_key=OPENAI_API_KEY)
+        file_bytes = await audio_data.read()
+
+        transcription = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=(audio_data.filename, file_bytes, audio_data.content_type),
+        )
+
+        return {"text": transcription.text}
+    except openai.APIError as e:
+        raise HTTPException(status_code=502, detail=f"OpenAI error: {e.message}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

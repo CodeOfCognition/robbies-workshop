@@ -9,7 +9,7 @@ This is a personal Swiss Army knife PWA — a single authenticated shell that ho
 ## Current Apps
 
 - **ToneBoard** — Guitar amp preset builder for the Fender Mustang Micro Plus. Visual signal chain, amp/effects selection, AI-powered tone suggestions.
-- **Transcriber** — Speech-to-text utility using OpenAI Whisper. Complete and stable.
+- **Transcriber** — Speech-to-text utility using OpenAI Whisper. Being reworked to support long recordings via the AWS backend (Vercel has body size and timeout limits that break multi-minute audio).
 - **Spotify** (planned) — Separate sub-app for interfacing with personal Spotify data.
 
 ## Tech Stack
@@ -26,7 +26,7 @@ Security is a priority. The app is gated behind GitHub OAuth with an explicit us
 
 ## AI Agents
 
-All AI agents must be built in **LangGraph (Python)**. This is a separate service from the Next.js frontend and requires its own deployment. **AWS is the deployment target** — any Cloud Run references in the codebase are legacy. The current Vercel AI SDK chat integration is a temporary placeholder while the LangGraph agent is being stood up.
+All AI agents must be built in **LangGraph (Python)**. This is a separate service from the Next.js frontend and requires its own deployment. **AWS is the deployment target** — any Cloud Run or ToneBoard references in env vars or infra are legacy naming. The backend also handles heavy processing (e.g., long audio transcription) that exceeds Vercel's serverless limits. CI/CD uses **GitHub Actions → ECR → App Runner** (not CodeBuild).
 
 ## Infrastructure
 

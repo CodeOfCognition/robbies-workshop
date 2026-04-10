@@ -16,6 +16,9 @@ interface Transcription {
   text: string;
 }
 
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+const BACKEND_API_KEY = process.env.NEXT_PUBLIC_WORKSHOP_BACKEND_API_KEY;
+
 function getSupportedMimeType(): string {
   const types = ["audio/webm", "audio/mp4", "audio/ogg"];
   for (const type of types) {
@@ -67,9 +70,14 @@ export default function TranscriberPage() {
         formData.append("audio_data", blob, ext);
 
         try {
-          const res = await fetch("/api/transcribe", {
+          if (!BACKEND_URL || !BACKEND_API_KEY) {
+            throw new Error("Backend not configured");
+          }
+
+          const res = await fetch(`${BACKEND_URL}/transcribe`, {
             method: "POST",
             body: formData,
+            headers: { "X-API-Key": BACKEND_API_KEY },
           });
 
           if (!res.ok) throw new Error(await res.text());
