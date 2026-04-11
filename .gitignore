@@ -19,6 +19,10 @@ dist/
 # debug
 npm-debug.log*
 
+# python
+.venv/
+__pycache__/
+
 # OS
 .DS_Store
 Thumbs.db
