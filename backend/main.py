@@ -4,12 +4,16 @@ Hosts AI agents and heavy processing (transcription, preset suggestions, etc.)
 """
 
 import os
+import logging
 from fastapi import FastAPI, HTTPException, Header, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 import openai
 from agent import suggest_preset_agent
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Robbie's Workshop API", version="0.1.0")
 
@@ -75,16 +79,21 @@ async def transcribe(audio_data: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail="OpenAI API key not configured")
 
     try:
+        logger.info(f"Transcribe request: filename={audio_data.filename}, content_type={audio_data.content_type}")
         client = openai.OpenAI(api_key=OPENAI_API_KEY)
         file_bytes = await audio_data.read()
+        logger.info(f"Read {len(file_bytes)} bytes from upload")
 
         transcription = client.audio.transcriptions.create(
             model="whisper-1",
             file=(audio_data.filename, file_bytes, audio_data.content_type),
         )
 
+        logger.info("Transcription successful")
         return {"text": transcription.text}
     except openai.APIError as e:
+        logger.error(f"OpenAI API error: {e}")
         raise HTTPException(status_code=502, detail=f"OpenAI error: {e.message}")
     except Exception as e:
+        logger.error(f"Transcription failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
