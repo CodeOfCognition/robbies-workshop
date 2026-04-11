@@ -5,12 +5,17 @@ Hosts AI agents and heavy processing (transcription, preset suggestions, etc.)
 
 import os
 import logging
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException, Header, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 import openai
 from agent import suggest_preset_agent
+from agents.spotify import explore_music
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -70,6 +75,25 @@ async def suggest_preset(request: PresetRequest):
         )
         return result
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ExploreRequest(BaseModel):
+    messages: list[dict]
+
+
+class ExploreResponse(BaseModel):
+    answer: str
+    query: str | None = None
+
+
+@app.post("/explore-music", response_model=ExploreResponse, dependencies=[Depends(verify_api_key)])
+async def explore_music_endpoint(request: ExploreRequest):
+    try:
+        result = await explore_music(request.messages)
+        return result
+    except Exception as e:
+        logger.error(f"Explore music error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

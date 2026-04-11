@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Guitar, Mic, LogOut } from "lucide-react";
+import { Guitar, Mic, Music, LogOut } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 const apps = [
@@ -18,6 +18,13 @@ const apps = [
     href: "/transcriber",
     icon: Mic,
     color: "#3b82f6",
+  },
+  {
+    name: "CHAT WITH SPOTIFY",
+    description: "Explore your listening history",
+    href: "/spotify",
+    icon: Music,
+    color: "#1DB954",
   },
 ];
 

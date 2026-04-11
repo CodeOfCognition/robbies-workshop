@@ -26,7 +26,7 @@ Security is a priority. The app is gated behind GitHub OAuth with an explicit us
 
 ## AI Agents
 
-All AI agents must be built in **LangGraph (Python)**. This is a separate service from the Next.js frontend and requires its own deployment. **AWS is the deployment target** — any Cloud Run or ToneBoard references in env vars or infra are legacy naming. The backend also handles heavy processing (e.g., long audio transcription) that exceeds Vercel's serverless limits. CI/CD uses **GitHub Actions → ECR → App Runner** (not CodeBuild).
+All AI agents are built in **Python** using the **Anthropic SDK** with native tool use. See `backend/claude-agent-sdk-best-practices.md` for reference. This is a separate service from the Next.js frontend and requires its own deployment. **AWS is the deployment target** — any Cloud Run or ToneBoard references in env vars or infra are legacy naming. The backend also handles heavy processing (e.g., long audio transcription) that exceeds Vercel's serverless limits. CI/CD uses **GitHub Actions → ECR → App Runner** (not CodeBuild).
 
 ## Infrastructure
 
@@ -35,6 +35,10 @@ All AI agents must be built in **LangGraph (Python)**. This is a separate servic
 | Frontend | Vercel |
 | AI Backend | AWS (Python/FastAPI/LangGraph) |
 | Database | Supabase |
+
+## Database
+
+Supabase Postgres hosts the `streaming_history` table (~140K rows of Spotify playback data, 2014-2026). For schema details and the import/migration process, see the docstring in `scripts/import_spotify.py`.
 
 ## Work in Progress
 
@@ -55,3 +59,7 @@ The owner is an experienced developer and AI engineer. When working on this proj
 ## Maintaining This File
 
 Update this file prudently and with care. Keep it concise. As the project evolves, add relevant context, but don't let it bloat. Every section should earn its place.
+
+## GitHub
+
+Do not add yourself as a co author in commits
