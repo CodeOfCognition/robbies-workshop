@@ -2,28 +2,14 @@
 Spotify agent tools — execute read-only SQL against the streaming_history table.
 """
 
-import os
 import json
 import logging
-import asyncpg
+
+from db import get_pool
 
 logger = logging.getLogger(__name__)
 
-SUPABASE_DB_URL = os.getenv("SUPABASE_DB_URL", "")
-
 ROW_LIMIT = 500
-
-# Lazy-initialized connection pool
-_pool: asyncpg.Pool | None = None
-
-
-async def _get_pool() -> asyncpg.Pool:
-    global _pool
-    if _pool is None:
-        if not SUPABASE_DB_URL:
-            raise RuntimeError("SUPABASE_DB_URL env var is not set")
-        _pool = await asyncpg.create_pool(SUPABASE_DB_URL, min_size=1, max_size=5)
-    return _pool
 
 
 async def execute_sql(sql: str) -> str:
@@ -42,7 +28,7 @@ async def execute_sql(sql: str) -> str:
     if "LIMIT" not in upper:
         normalized = f"{normalized} LIMIT {ROW_LIMIT}"
 
-    pool = await _get_pool()
+    pool = await get_pool()
     try:
         async with pool.acquire() as conn:
             rows = await conn.fetch(normalized)
