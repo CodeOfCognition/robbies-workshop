@@ -41,7 +41,7 @@ type View =
   | { type: "editor"; presetId: string | null }
   | { type: "amp-picker" }
   | { type: "effect-picker"; category: EffectCategory }
-  | { type: "chat" };
+  | { type: "chat"; presetId: string };
 
 function blankDraft(): Preset {
   return {
@@ -190,6 +190,23 @@ export default function App() {
     }
   };
 
+  // Called when the tone agent updates the tone during a chat turn. Sync
+  // the draft (so the editor redraws on return) and the library list (so
+  // the card preview is in sync). Also surface the song info section if
+  // the agent wrote any song/artist/notes fields.
+  const handleToneUpdatedFromChat = useCallback((updated: Preset) => {
+    setDraft((prev) =>
+      prev.id === updated.id ? updated : prev
+    );
+    setPresets((prev) =>
+      prev.map((p) => (p.id === updated.id ? updated : p))
+    );
+    if (updated.songName || updated.artistName || updated.notes) {
+      setShowSongInfo(true);
+    }
+    setDraftIsNew(false);
+  }, []);
+
   const handleSlotClick = (slot: "amp" | EffectCategory) => {
     if (slot === "amp") {
       setView({ type: "amp-picker" });
@@ -214,7 +231,15 @@ export default function App() {
 
   // === CHAT VIEW ===
   if (view.type === "chat") {
-    return <ToneChat onBack={() => setView({ type: "library" })} />;
+    return (
+      <ToneChat
+        toneId={view.presetId}
+        onBack={() =>
+          setView({ type: "editor", presetId: view.presetId })
+        }
+        onToneUpdated={handleToneUpdatedFromChat}
+      />
+    );
   }
 
   // === LIBRARY VIEW ===
@@ -293,15 +318,8 @@ export default function App() {
           </div>
         )}
 
-        {/* FABs */}
+        {/* FAB */}
         <div className="fixed bottom-6 right-6 flex flex-col gap-3">
-          <button
-            onClick={() => setView({ type: "chat" })}
-            className="w-12 h-12 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-lg shadow-purple-600/20 active:scale-95 transition-transform"
-            title="Chat with ToneBot"
-          >
-            <Sparkles className="w-5 h-5" />
-          </button>
           <button
             onClick={openNewPreset}
             disabled={busy}
@@ -652,6 +670,17 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {/* Chat FAB — opens the per-tone agent conversation */}
+      {draft.id && (
+        <button
+          onClick={() => setView({ type: "chat", presetId: draft.id })}
+          className="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-lg shadow-purple-600/20 active:scale-95 transition-transform"
+          title="Chat with ToneBot about this tone"
+        >
+          <Sparkles className="w-5 h-5" />
+        </button>
+      )}
     </div>
   );
 }
