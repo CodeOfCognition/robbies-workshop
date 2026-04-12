@@ -61,7 +61,12 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [detailSlot, setDetailSlot] = useState<EffectCategory | null>(null);
   const [showSongInfo, setShowSongInfo] = useState(false);
-  const [creatingNew, setCreatingNew] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Tracks whether `draft` points at a freshly-created blank row that
+  // has not yet been saved by the user. On Back from the editor we
+  // delete it so empty rows don't leak into the library.
+  const [draftIsNew, setDraftIsNew] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,6 +76,7 @@ export default function App() {
         if (!cancelled) setPresets(list);
       } catch (e) {
         console.error("Failed to load presets:", e);
+        if (!cancelled) setError("Failed to load presets");
       } finally {
         if (!cancelled) setLoaded(true);
       }
@@ -86,32 +92,61 @@ export default function App() {
       setPresets(list);
     } catch (e) {
       console.error("Failed to refresh presets:", e);
+      setError("Failed to load presets");
     }
   }, []);
 
   const openNewPreset = async () => {
-    if (creatingNew) return;
-    setCreatingNew(true);
+    if (busy) return;
+    setBusy(true);
     try {
       const created = await createPreset({});
       setDraft(created);
+      setDraftIsNew(true);
       setShowSongInfo(false);
+      setError(null);
       setView({ type: "editor", presetId: created.id });
     } catch (e) {
       console.error("Failed to create preset:", e);
+      setError("Failed to create preset");
     } finally {
-      setCreatingNew(false);
+      setBusy(false);
     }
   };
 
   const openEditPreset = (p: Preset) => {
     setDraft({ ...p });
+    setDraftIsNew(false);
     setShowSongInfo(!!(p.songName || p.artistName || p.notes));
     setView({ type: "editor", presetId: p.id });
   };
 
+  // Leave the editor back to the library. If the draft is a new unsaved
+  // row, delete it so cancelled creations don't leave empty rows behind.
+  const leaveEditor = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (draftIsNew) {
+        try {
+          await deletePreset(draft.id);
+        } catch (e) {
+          console.error("Failed to delete empty draft:", e);
+          setError("Failed to discard draft");
+        }
+      }
+      setDraftIsNew(false);
+      await refreshPresets();
+      setView({ type: "library" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!draft.ampModel) return;
+    if (busy) return;
+    setBusy(true);
     const name =
       draft.name.trim() ||
       (draft.songName
@@ -126,20 +161,32 @@ export default function App() {
         artistName: draft.artistName,
         notes: draft.notes,
       });
+      setDraftIsNew(false);
+      setError(null);
       await refreshPresets();
       setView({ type: "library" });
     } catch (e) {
       console.error("Failed to save preset:", e);
+      setError("Failed to save preset");
+    } finally {
+      setBusy(false);
     }
   };
 
   const handleDelete = async () => {
+    if (busy) return;
+    setBusy(true);
     try {
       await deletePreset(draft.id);
+      setDraftIsNew(false);
+      setError(null);
       await refreshPresets();
       setView({ type: "library" });
     } catch (e) {
       console.error("Failed to delete preset:", e);
+      setError("Failed to delete preset");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -188,6 +235,19 @@ export default function App() {
             Mustang Micro Plus
           </p>
         </header>
+
+        {error && (
+          <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-red-900/40 bg-red-950/30 px-3 py-2 text-sm text-red-300">
+            <span>{error}</span>
+            <button
+              onClick={() => setError(null)}
+              className="shrink-0 text-red-300/80 active:text-red-300"
+              aria-label="Dismiss error"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {presets.length === 0 ? (
           <div className="animate-fade-up mt-20 text-center">
@@ -244,8 +304,8 @@ export default function App() {
           </button>
           <button
             onClick={openNewPreset}
-            disabled={creatingNew}
-            className="w-14 h-14 rounded-full bg-[var(--color-amber)] text-black flex items-center justify-center shadow-lg shadow-[var(--color-amber)]/20 active:scale-95 transition-transform disabled:opacity-60"
+            disabled={busy}
+            className="w-14 h-14 rounded-full bg-[var(--color-amber)] text-black flex items-center justify-center shadow-lg shadow-[var(--color-amber)]/20 active:scale-95 transition-transform disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <Plus className="w-6 h-6" strokeWidth={2.5} />
           </button>
@@ -461,8 +521,9 @@ export default function App() {
       {/* Header */}
       <header className="sticky top-0 z-10 bg-[var(--color-bg)]/95 backdrop-blur-sm border-b border-[var(--color-border)] px-4 py-4 flex items-center justify-between">
         <button
-          onClick={() => setView({ type: "library" })}
-          className="flex items-center gap-1 text-[var(--color-text-dim)]"
+          onClick={leaveEditor}
+          disabled={busy}
+          className="flex items-center gap-1 text-[var(--color-text-dim)] disabled:opacity-60 disabled:cursor-not-allowed"
         >
           <ChevronLeft className="w-5 h-5" />
           <span className="text-sm">Back</span>
@@ -474,6 +535,18 @@ export default function App() {
       </header>
 
       <div className="px-4 pt-6 space-y-6">
+        {error && (
+          <div className="flex items-start justify-between gap-3 rounded-lg border border-red-900/40 bg-red-950/30 px-3 py-2 text-sm text-red-300">
+            <span>{error}</span>
+            <button
+              onClick={() => setError(null)}
+              className="shrink-0 text-red-300/80 active:text-red-300"
+              aria-label="Dismiss error"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
         {/* Preset Name */}
         <div>
           <label className="block text-xs text-[var(--color-text-faint)] uppercase tracking-widest font-[family-name:var(--font-mono)] mb-2">
@@ -557,10 +630,10 @@ export default function App() {
         <div className="space-y-3 pt-2">
           <button
             onClick={handleSave}
-            disabled={!canSave}
-            className={`w-full py-3.5 rounded-xl font-[family-name:var(--font-display)] text-lg tracking-wider flex items-center justify-center gap-2 transition-all ${canSave
+            disabled={!canSave || busy}
+            className={`w-full py-3.5 rounded-xl font-[family-name:var(--font-display)] text-lg tracking-wider flex items-center justify-center gap-2 transition-all ${canSave && !busy
               ? "bg-[var(--color-amber)] text-black active:scale-[0.98]"
-              : "bg-[var(--color-surface)] text-[var(--color-text-faint)] cursor-not-allowed"
+              : "bg-[var(--color-surface)] text-[var(--color-text-faint)] cursor-not-allowed opacity-60"
               }`}
           >
             <Save className="w-4 h-4" />
@@ -570,7 +643,8 @@ export default function App() {
           {isEditing && (
             <button
               onClick={handleDelete}
-              className="w-full py-3 rounded-xl border border-red-900/30 text-red-400 font-[family-name:var(--font-mono)] text-xs flex items-center justify-center gap-2 active:bg-red-950/20 transition-colors"
+              disabled={busy}
+              className="w-full py-3 rounded-xl border border-red-900/30 text-red-400 font-[family-name:var(--font-mono)] text-xs flex items-center justify-center gap-2 active:bg-red-950/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Trash2 className="w-3.5 h-3.5" />
               DELETE PRESET

@@ -1,19 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  createServerSupabase,
-  rowToPreset,
-  ToneRow,
-} from "@/lib/supabase";
-import type { Preset } from "@/lib/data";
-
-interface PatchBody {
-  name?: string;
-  amp_model?: string;
-  effects?: Preset["effects"];
-  song_name?: string | null;
-  artist_name?: string | null;
-  notes?: string | null;
-}
+import { createServerSupabase } from "@/lib/supabase";
+import { rowToPreset, type ToneRow, type TonePatch } from "@/lib/tones-mapper";
 
 export async function GET(
   _req: NextRequest,
@@ -34,9 +21,8 @@ export async function GET(
     }
     return NextResponse.json(rowToPreset(data as ToneRow));
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("[api/tones] GET by id failed:", msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[api/tones] GET by id failed:", err);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }
 
@@ -46,7 +32,7 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const body = (await req.json()) as PatchBody;
+    const body = (await req.json()) as TonePatch;
 
     const updateRow: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
@@ -73,9 +59,8 @@ export async function PATCH(
     }
     return NextResponse.json(rowToPreset(data as ToneRow));
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("[api/tones] PATCH failed:", msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[api/tones] PATCH failed:", err);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }
 
@@ -90,8 +75,7 @@ export async function DELETE(
     if (error) throw error;
     return NextResponse.json({ ok: true });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("[api/tones] DELETE failed:", msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[api/tones] DELETE failed:", err);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

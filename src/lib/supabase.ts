@@ -29,10 +29,3 @@ export function createServerSupabase(): SupabaseClient {
 
   return cached;
 }
-
-// Re-export mappers for convenience in route handlers.
-export {
-  rowToPreset,
-  presetPatchToRow,
-  type ToneRow,
-} from "./tones-mapper";

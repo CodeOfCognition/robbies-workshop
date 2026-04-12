@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  createServerSupabase,
-  rowToPreset,
-  ToneRow,
-} from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase";
+import { rowToPreset, type ToneRow, type TonePatch } from "@/lib/tones-mapper";
 
 export async function GET() {
   try {
@@ -18,31 +15,16 @@ export async function GET() {
     const presets = (data as ToneRow[]).map(rowToPreset);
     return NextResponse.json(presets);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("[api/tones] GET failed:", msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[api/tones] GET failed:", err);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
-}
-
-interface CreateBody {
-  name?: string;
-  amp_model?: string;
-  effects?: {
-    stompbox: string | null;
-    modulation: string | null;
-    delay: string | null;
-    reverb: string | null;
-  };
-  song_name?: string | null;
-  artist_name?: string | null;
-  notes?: string | null;
 }
 
 export async function POST(req: NextRequest) {
   try {
-    let body: CreateBody = {};
+    let body: TonePatch = {};
     try {
-      body = (await req.json()) as CreateBody;
+      body = (await req.json()) as TonePatch;
     } catch {
       // Empty body is allowed — we'll insert defaults.
       body = {};
@@ -73,8 +55,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(rowToPreset(data as ToneRow));
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("[api/tones] POST failed:", msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[api/tones] POST failed:", err);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }
