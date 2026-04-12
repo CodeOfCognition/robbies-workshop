@@ -8,10 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
-    "@ai-sdk/google": "^3.0.53",
-    "@ai-sdk/react": "^3.0.143",
     "@supabase/supabase-js": "^2.103.0",
-    "ai": "^6.0.141",
     "lucide-react": "^0.469.0",
     "next": "^15.3.1",
     "next-auth": "^5.0.0-beta.30",

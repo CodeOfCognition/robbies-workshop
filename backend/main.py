@@ -12,10 +12,8 @@ load_dotenv()
 from fastapi import FastAPI, HTTPException, Header, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
 import json as _json
 import openai
-from agent import suggest_preset_agent
 from agents.spotify import explore_music
 from agents.toneboard import run_tone_chat
 from db import get_pool
@@ -47,38 +45,9 @@ def verify_api_key(x_api_key: str = Header(...)):
     return True
 
 
-class PresetRequest(BaseModel):
-    song_name: Optional[str] = None
-    artist: Optional[str] = None
-    genre: Optional[str] = None
-    tone_descriptors: Optional[list[str]] = None
-    notes: Optional[str] = None
-
-
-class PresetResponse(BaseModel):
-    amp_model: str
-    effects: dict[str, Optional[str]]  # stompbox, modulation, delay, reverb
-    reasoning: str
-
-
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "robbies-workshop-api"}
-
-
-@app.post("/suggest-preset", response_model=PresetResponse, dependencies=[Depends(verify_api_key)])
-async def suggest_preset(request: PresetRequest):
-    try:
-        result = await suggest_preset_agent(
-            song_name=request.song_name,
-            artist=request.artist,
-            genre=request.genre,
-            tone_descriptors=request.tone_descriptors,
-            notes=request.notes,
-        )
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 class ExploreRequest(BaseModel):
