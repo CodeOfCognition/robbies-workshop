@@ -13,9 +13,12 @@ from fastapi import FastAPI, HTTPException, Header, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
+import json as _json
 import openai
 from agent import suggest_preset_agent
 from agents.spotify import explore_music
+from agents.toneboard import run_tone_chat
+from db import get_pool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -95,6 +98,86 @@ async def explore_music_endpoint(request: ExploreRequest):
     except Exception as e:
         logger.error(f"Explore music error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class ToneChatRequest(BaseModel):
+    tone_id: str
+    user_message: str
+
+
+class ToneChatMessage(BaseModel):
+    role: str
+    content: list[dict]
+
+
+class ToneChatResponse(BaseModel):
+    messages: list[ToneChatMessage]  # just the new user + assistant pair
+    tone: dict
+
+
+@app.post("/tone-chat", response_model=ToneChatResponse, dependencies=[Depends(verify_api_key)])
+async def tone_chat(request: ToneChatRequest):
+    pool = await get_pool()
+    try:
+        # Load prior thread
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT role, content FROM tone_messages WHERE tone_id = $1::uuid ORDER BY created_at",
+                request.tone_id,
+            )
+            prior: list[dict] = []
+            for r in rows:
+                content = r["content"]
+                if isinstance(content, str):
+                    content = _json.loads(content)
+                prior.append({"role": r["role"], "content": content})
+
+        # Run agent
+        assistant_blocks = await run_tone_chat(
+            tone_id=request.tone_id,
+            prior_messages=prior,
+            user_message=request.user_message,
+        )
+
+        # Persist user + assistant messages and load latest tone
+        user_blocks = [{"type": "text", "text": request.user_message}]
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "INSERT INTO tone_messages (tone_id, role, content) VALUES ($1::uuid, $2, $3::jsonb)",
+                    request.tone_id,
+                    "user",
+                    _json.dumps(user_blocks),
+                )
+                await conn.execute(
+                    "INSERT INTO tone_messages (tone_id, role, content) VALUES ($1::uuid, $2, $3::jsonb)",
+                    request.tone_id,
+                    "assistant",
+                    _json.dumps(assistant_blocks),
+                )
+
+            row = await conn.fetchrow(
+                "SELECT * FROM tones WHERE id = $1::uuid", request.tone_id
+            )
+            if not row:
+                raise HTTPException(status_code=404, detail="Tone not found")
+            tone = {
+                k: (v.isoformat() if hasattr(v, "isoformat") else v)
+                for k, v in dict(row).items()
+            }
+
+        return ToneChatResponse(
+            messages=[
+                ToneChatMessage(role="user", content=user_blocks),
+                ToneChatMessage(role="assistant", content=assistant_blocks),
+            ],
+            tone=tone,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"tone-chat error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal error")
 
 
 @app.post("/transcribe", dependencies=[Depends(verify_api_key)])
