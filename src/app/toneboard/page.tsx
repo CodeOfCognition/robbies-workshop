@@ -14,7 +14,6 @@ import {
   ChevronUp,
   ArrowLeftRight,
   Sparkles,
-  Loader2,
 } from "lucide-react";
 import {
   Preset,
@@ -25,7 +24,12 @@ import {
   PEDAL_COLORS,
   getEffectsByCategory,
 } from "@/lib/data";
-import { getPresets, savePreset, deletePreset, generateId } from "@/lib/store";
+import {
+  listPresets,
+  createPreset,
+  updatePreset,
+  deletePreset,
+} from "@/lib/store";
 import { SignalChain } from "@/components/SignalChain";
 import { PedalCard } from "@/components/PedalCard";
 import { AmpCard } from "@/components/AmpCard";
@@ -37,65 +41,175 @@ type View =
   | { type: "editor"; presetId: string | null }
   | { type: "amp-picker" }
   | { type: "effect-picker"; category: EffectCategory }
-  | { type: "chat" };
+  | { type: "chat"; presetId: string };
 
-function emptyPreset(): Preset {
+function blankDraft(): Preset {
   return {
-    id: generateId(),
+    id: "",
     name: "",
     ampModel: "",
     effects: { stompbox: null, modulation: null, delay: null, reverb: null },
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    createdAt: 0,
+    updatedAt: 0,
   };
 }
 
 export default function App() {
   const [view, setView] = useState<View>({ type: "library" });
   const [presets, setPresets] = useState<Preset[]>([]);
-  const [draft, setDraft] = useState<Preset>(emptyPreset());
+  const [draft, setDraft] = useState<Preset>(blankDraft());
   const [loaded, setLoaded] = useState(false);
   const [detailSlot, setDetailSlot] = useState<EffectCategory | null>(null);
   const [showSongInfo, setShowSongInfo] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiReasoning, setAiReasoning] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [chatSending, setChatSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Tracks whether `draft` points at a freshly-created blank row that
+  // has not yet been saved by the user. On Back from the editor we
+  // delete it so empty rows don't leak into the library.
+  const [draftIsNew, setDraftIsNew] = useState(false);
 
   useEffect(() => {
-    setPresets(getPresets());
-    setLoaded(true);
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await listPresets();
+        if (!cancelled) setPresets(list);
+      } catch (e) {
+        console.error("Failed to load presets:", e);
+        if (!cancelled) setError("Failed to load presets");
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const refreshPresets = useCallback(() => setPresets(getPresets()), []);
+  const refreshPresets = useCallback(async () => {
+    try {
+      const list = await listPresets();
+      setPresets(list);
+    } catch (e) {
+      console.error("Failed to refresh presets:", e);
+      setError("Failed to load presets");
+    }
+  }, []);
 
-  const openNewPreset = () => {
-    setDraft(emptyPreset());
-    setShowSongInfo(false);
-    setView({ type: "editor", presetId: null });
+  const openNewPreset = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const created = await createPreset({});
+      setDraft(created);
+      setDraftIsNew(true);
+      setShowSongInfo(false);
+      setError(null);
+      setView({ type: "editor", presetId: created.id });
+    } catch (e) {
+      console.error("Failed to create preset:", e);
+      setError("Failed to create preset");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const openEditPreset = (p: Preset) => {
     setDraft({ ...p });
+    setDraftIsNew(false);
     setShowSongInfo(!!(p.songName || p.artistName || p.notes));
     setView({ type: "editor", presetId: p.id });
   };
 
-  const handleSave = () => {
+  // Leave the editor back to the library. If the draft is a new unsaved
+  // row, delete it so cancelled creations don't leave empty rows behind.
+  const leaveEditor = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (draftIsNew) {
+        try {
+          await deletePreset(draft.id);
+        } catch (e) {
+          console.error("Failed to delete empty draft:", e);
+          setError("Failed to discard draft");
+        }
+      }
+      setDraftIsNew(false);
+      await refreshPresets();
+      setView({ type: "library" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSave = async () => {
     if (!draft.ampModel) return;
+    if (busy) return;
+    // Guard against clobbering an in-flight agent write with a stale draft.
+    if (chatSending) return;
+    setBusy(true);
     const name =
       draft.name.trim() ||
       (draft.songName
         ? `${draft.songName} — ${draft.ampModel}`
         : draft.ampModel);
-    savePreset({ ...draft, name });
-    refreshPresets();
-    setView({ type: "library" });
+    try {
+      await updatePreset(draft.id, {
+        name,
+        ampModel: draft.ampModel,
+        effects: draft.effects,
+        songName: draft.songName,
+        artistName: draft.artistName,
+        notes: draft.notes,
+      });
+      setDraftIsNew(false);
+      setError(null);
+      await refreshPresets();
+      setView({ type: "library" });
+    } catch (e) {
+      console.error("Failed to save preset:", e);
+      setError("Failed to save preset");
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const handleDelete = () => {
-    deletePreset(draft.id);
-    refreshPresets();
-    setView({ type: "library" });
+  const handleDelete = async () => {
+    if (busy) return;
+    if (chatSending) return;
+    setBusy(true);
+    try {
+      await deletePreset(draft.id);
+      setDraftIsNew(false);
+      setError(null);
+      await refreshPresets();
+      setView({ type: "library" });
+    } catch (e) {
+      console.error("Failed to delete preset:", e);
+      setError("Failed to delete preset");
+    } finally {
+      setBusy(false);
+    }
   };
+
+  // Called when the tone agent updates the tone during a chat turn. Sync
+  // the draft (so the editor redraws on return) and the library list (so
+  // the card preview is in sync). Also surface the song info section if
+  // the agent wrote any song/artist/notes fields.
+  const handleToneUpdatedFromChat = useCallback((updated: Preset) => {
+    setDraft((prev) =>
+      prev.id === updated.id ? updated : prev
+    );
+    setPresets((prev) =>
+      prev.map((p) => (p.id === updated.id ? updated : p))
+    );
+    if (updated.songName || updated.artistName || updated.notes) {
+      setShowSongInfo(true);
+    }
+    setDraftIsNew(false);
+  }, []);
 
   const handleSlotClick = (slot: "amp" | EffectCategory) => {
     if (slot === "amp") {
@@ -111,40 +225,6 @@ export default function App() {
     }
   };
 
-  const handleAiSuggest = async () => {
-    setAiLoading(true);
-    setAiReasoning(null);
-    try {
-      const res = await fetch("/api/suggest-preset", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          song_name: draft.songName || undefined,
-          artist: draft.artistName || undefined,
-          notes: draft.notes || undefined,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      setDraft((d) => ({
-        ...d,
-        ampModel: data.amp_model || d.ampModel,
-        effects: {
-          stompbox: data.effects?.stompbox ?? d.effects.stompbox,
-          modulation: data.effects?.modulation ?? d.effects.modulation,
-          delay: data.effects?.delay ?? d.effects.delay,
-          reverb: data.effects?.reverb ?? d.effects.reverb,
-        },
-      }));
-      setAiReasoning(data.reasoning || null);
-    } catch (e) {
-      console.error("AI suggestion failed:", e);
-      setAiReasoning("Failed to get suggestion. Is the AI backend running?");
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
   if (!loaded) {
     return (
       <div className="min-h-dvh flex items-center justify-center bg-[var(--color-bg)]">
@@ -155,7 +235,16 @@ export default function App() {
 
   // === CHAT VIEW ===
   if (view.type === "chat") {
-    return <ToneChat onBack={() => setView({ type: "library" })} />;
+    return (
+      <ToneChat
+        toneId={view.presetId}
+        onBack={() =>
+          setView({ type: "editor", presetId: view.presetId })
+        }
+        onToneUpdated={handleToneUpdatedFromChat}
+        onSendingChange={setChatSending}
+      />
+    );
   }
 
   // === LIBRARY VIEW ===
@@ -176,6 +265,19 @@ export default function App() {
             Mustang Micro Plus
           </p>
         </header>
+
+        {error && (
+          <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-red-900/40 bg-red-950/30 px-3 py-2 text-sm text-red-300">
+            <span>{error}</span>
+            <button
+              onClick={() => setError(null)}
+              className="shrink-0 text-red-300/80 active:text-red-300"
+              aria-label="Dismiss error"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {presets.length === 0 ? (
           <div className="animate-fade-up mt-20 text-center">
@@ -221,18 +323,12 @@ export default function App() {
           </div>
         )}
 
-        {/* FABs */}
+        {/* FAB */}
         <div className="fixed bottom-6 right-6 flex flex-col gap-3">
           <button
-            onClick={() => setView({ type: "chat" })}
-            className="w-12 h-12 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-lg shadow-purple-600/20 active:scale-95 transition-transform"
-            title="Chat with ToneBot"
-          >
-            <Sparkles className="w-5 h-5" />
-          </button>
-          <button
             onClick={openNewPreset}
-            className="w-14 h-14 rounded-full bg-[var(--color-amber)] text-black flex items-center justify-center shadow-lg shadow-[var(--color-amber)]/20 active:scale-95 transition-transform"
+            disabled={busy}
+            className="w-14 h-14 rounded-full bg-[var(--color-amber)] text-black flex items-center justify-center shadow-lg shadow-[var(--color-amber)]/20 active:scale-95 transition-transform disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <Plus className="w-6 h-6" strokeWidth={2.5} />
           </button>
@@ -448,8 +544,9 @@ export default function App() {
       {/* Header */}
       <header className="sticky top-0 z-10 bg-[var(--color-bg)]/95 backdrop-blur-sm border-b border-[var(--color-border)] px-4 py-4 flex items-center justify-between">
         <button
-          onClick={() => setView({ type: "library" })}
-          className="flex items-center gap-1 text-[var(--color-text-dim)]"
+          onClick={leaveEditor}
+          disabled={busy}
+          className="flex items-center gap-1 text-[var(--color-text-dim)] disabled:opacity-60 disabled:cursor-not-allowed"
         >
           <ChevronLeft className="w-5 h-5" />
           <span className="text-sm">Back</span>
@@ -461,6 +558,18 @@ export default function App() {
       </header>
 
       <div className="px-4 pt-6 space-y-6">
+        {error && (
+          <div className="flex items-start justify-between gap-3 rounded-lg border border-red-900/40 bg-red-950/30 px-3 py-2 text-sm text-red-300">
+            <span>{error}</span>
+            <button
+              onClick={() => setError(null)}
+              className="shrink-0 text-red-300/80 active:text-red-300"
+              aria-label="Dismiss error"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
         {/* Preset Name */}
         <div>
           <label className="block text-xs text-[var(--color-text-faint)] uppercase tracking-widest font-[family-name:var(--font-mono)] mb-2">
@@ -491,26 +600,6 @@ export default function App() {
           <p className="text-[10px] text-[var(--color-text-faint)] mt-2 text-center font-[family-name:var(--font-mono)]">
             TAP A SLOT TO CHANGE • TAP A PEDAL FOR DETAILS
           </p>
-
-          {/* AI Suggest Button */}
-          <button
-            onClick={handleAiSuggest}
-            disabled={aiLoading}
-            className="mt-3 w-full py-2.5 rounded-lg bg-gradient-to-r from-purple-600/20 to-violet-600/20 border border-purple-500/30 text-purple-300 font-[family-name:var(--font-mono)] text-xs flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-50"
-          >
-            {aiLoading ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Sparkles className="w-3.5 h-3.5" />
-            )}
-            {aiLoading ? "THINKING..." : "✨ AI SUGGEST"}
-          </button>
-
-          {aiReasoning && (
-            <p className="mt-2 text-xs text-[var(--color-text-dim)] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-3 leading-relaxed">
-              {aiReasoning}
-            </p>
-          )}
         </div>
 
         {/* Song Info (collapsible) */}
@@ -564,10 +653,11 @@ export default function App() {
         <div className="space-y-3 pt-2">
           <button
             onClick={handleSave}
-            disabled={!canSave}
-            className={`w-full py-3.5 rounded-xl font-[family-name:var(--font-display)] text-lg tracking-wider flex items-center justify-center gap-2 transition-all ${canSave
+            disabled={!canSave || busy || chatSending}
+            title={chatSending ? "Waiting for TONEBOT to finish..." : undefined}
+            className={`w-full py-3.5 rounded-xl font-[family-name:var(--font-display)] text-lg tracking-wider flex items-center justify-center gap-2 transition-all ${canSave && !busy && !chatSending
               ? "bg-[var(--color-amber)] text-black active:scale-[0.98]"
-              : "bg-[var(--color-surface)] text-[var(--color-text-faint)] cursor-not-allowed"
+              : "bg-[var(--color-surface)] text-[var(--color-text-faint)] cursor-not-allowed opacity-60"
               }`}
           >
             <Save className="w-4 h-4" />
@@ -577,7 +667,8 @@ export default function App() {
           {isEditing && (
             <button
               onClick={handleDelete}
-              className="w-full py-3 rounded-xl border border-red-900/30 text-red-400 font-[family-name:var(--font-mono)] text-xs flex items-center justify-center gap-2 active:bg-red-950/20 transition-colors"
+              disabled={busy || chatSending}
+              className="w-full py-3 rounded-xl border border-red-900/30 text-red-400 font-[family-name:var(--font-mono)] text-xs flex items-center justify-center gap-2 active:bg-red-950/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Trash2 className="w-3.5 h-3.5" />
               DELETE PRESET
@@ -585,6 +676,17 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {/* Chat FAB — opens the per-tone agent conversation */}
+      {draft.id && (
+        <button
+          onClick={() => setView({ type: "chat", presetId: draft.id })}
+          className="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-lg shadow-purple-600/20 active:scale-95 transition-transform"
+          title="Chat with ToneBot about this tone"
+        >
+          <Sparkles className="w-5 h-5" />
+        </button>
+      )}
     </div>
   );
 }

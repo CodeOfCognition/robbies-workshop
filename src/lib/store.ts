@@ -1,34 +1,64 @@
-import { Preset } from "./data";
+import type { Preset } from "./data";
+import { presetPatchToRow } from "./tones-mapper";
 
-const STORAGE_KEY = "guitar-app-presets";
+// Client-side store for ToneBoard presets. All calls go through the
+// /api/tones/* routes, which are gated by the global NextAuth middleware
+// and backed by Supabase.
 
-export function getPresets(): Preset[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return [];
+async function parseOrThrow<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    let msg = `Request failed: ${res.status}`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body?.error) msg = body.error;
+    } catch {
+      // ignore
+    }
+    throw new Error(msg);
   }
+  return (await res.json()) as T;
 }
 
-export function savePreset(preset: Preset): void {
-  const presets = getPresets();
-  const idx = presets.findIndex((p) => p.id === preset.id);
-  if (idx >= 0) {
-    presets[idx] = { ...preset, updatedAt: Date.now() };
-  } else {
-    presets.unshift(preset);
-  }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
+export async function listPresets(): Promise<Preset[]> {
+  const res = await fetch("/api/tones", { cache: "no-store" });
+  return parseOrThrow<Preset[]>(res);
 }
 
-export function deletePreset(id: string): void {
-  const presets = getPresets().filter((p) => p.id !== id);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
+export async function getPreset(id: string): Promise<Preset> {
+  const res = await fetch(`/api/tones/${encodeURIComponent(id)}`, {
+    cache: "no-store",
+  });
+  return parseOrThrow<Preset>(res);
 }
 
-export function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+export async function createPreset(
+  initial: Partial<Preset> = {}
+): Promise<Preset> {
+  const body = presetPatchToRow(initial);
+  const res = await fetch("/api/tones", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return parseOrThrow<Preset>(res);
+}
+
+export async function updatePreset(
+  id: string,
+  patch: Partial<Preset>
+): Promise<Preset> {
+  const body = presetPatchToRow(patch);
+  const res = await fetch(`/api/tones/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return parseOrThrow<Preset>(res);
+}
+
+export async function deletePreset(id: string): Promise<void> {
+  const res = await fetch(`/api/tones/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  await parseOrThrow<{ ok: true }>(res);
 }
