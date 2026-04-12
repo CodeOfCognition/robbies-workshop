@@ -35,7 +35,10 @@ def _row_to_dict(row) -> dict[str, Any]:
             try:
                 out[k] = json.loads(v)
             except json.JSONDecodeError:
-                out[k] = v
+                logger.warning(
+                    "Malformed effects JSON on tone row; treating as empty"
+                )
+                out[k] = {}
         else:
             out[k] = v
     return out
@@ -86,7 +89,14 @@ async def db_update_tone(tone_id: str, patch: dict) -> dict:
             raise ValueError("Tone not found")
         existing = current.get("effects") or {}
         if isinstance(existing, str):
-            existing = json.loads(existing)
+            try:
+                existing = json.loads(existing)
+            except json.JSONDecodeError:
+                logger.warning(
+                    "Malformed effects JSON on tone %s; starting merge from empty",
+                    tone_id,
+                )
+                existing = {}
         merged = dict(existing) if isinstance(existing, dict) else {}
         merged.update(effects)
         patch["effects"] = merged

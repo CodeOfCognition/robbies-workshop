@@ -10,6 +10,7 @@ import os
 # The SDK reads ANTHROPIC_API_KEY; alias from our existing CLAUDE_API_KEY.
 os.environ.setdefault("ANTHROPIC_API_KEY", os.getenv("CLAUDE_API_KEY", ""))
 
+import json
 import logging
 from typing import Any
 
@@ -32,21 +33,45 @@ MAX_TURNS = 8
 MAX_BUDGET_USD = 0.25
 
 
+_TOOL_INPUT_MAX_CHARS = 500
+
+
 def _history_to_prompt(prior_messages: list[dict], user_message: str) -> str:
-    """Flatten prior conversation into a plain-text preamble for the fresh session."""
+    """Flatten prior conversation into a plain-text preamble for the fresh session.
+
+    Note: tool_result blocks from prior turns are not replayed — we only
+    summarize text and tool_use blocks so the agent can see what it decided
+    on previous turns, not what those tools actually returned.
+    """
     lines: list[str] = []
     for msg in prior_messages:
         role = msg.get("role", "")
         blocks = msg.get("content", []) or []
         text_parts: list[str] = []
+        tool_use_lines: list[str] = []
         for b in blocks:
-            if isinstance(b, dict) and b.get("type") == "text":
+            if not isinstance(b, dict):
+                continue
+            btype = b.get("type")
+            if btype == "text":
                 t = b.get("text", "")
                 if t:
                     text_parts.append(t)
+            elif btype == "tool_use":
+                name = b.get("name", "?")
+                try:
+                    input_str = json.dumps(b.get("input") or {}, default=str)
+                except (TypeError, ValueError):
+                    input_str = str(b.get("input"))
+                if len(input_str) > _TOOL_INPUT_MAX_CHARS:
+                    input_str = input_str[:_TOOL_INPUT_MAX_CHARS] + "...(truncated)"
+                tool_use_lines.append(f"[tool_use: {name}({input_str})]")
+
         text = " ".join(text_parts).strip()
-        if text:
-            lines.append(f"{role.capitalize()}: {text}")
+        if text or tool_use_lines:
+            header = f"{role.capitalize()}: {text}" if text else f"{role.capitalize()}:"
+            lines.append(header)
+            lines.extend(tool_use_lines)
 
     if lines:
         return "Conversation so far:\n" + "\n".join(lines) + "\n\nUser: " + user_message

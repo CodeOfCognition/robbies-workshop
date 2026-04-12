@@ -119,8 +119,15 @@ class ToneChatResponse(BaseModel):
 async def tone_chat(request: ToneChatRequest):
     pool = await get_pool()
     try:
-        # Load prior thread
+        # Pre-check tone exists before doing any work — otherwise we'd spend
+        # agent budget and persist messages against a phantom tone_id.
         async with pool.acquire() as conn:
+            exists = await conn.fetchval(
+                "SELECT 1 FROM tones WHERE id = $1::uuid", request.tone_id
+            )
+            if not exists:
+                raise HTTPException(status_code=404, detail="Tone not found")
+
             rows = await conn.fetch(
                 "SELECT role, content FROM tone_messages WHERE tone_id = $1::uuid ORDER BY created_at",
                 request.tone_id,
@@ -160,6 +167,8 @@ async def tone_chat(request: ToneChatRequest):
                 "SELECT * FROM tones WHERE id = $1::uuid", request.tone_id
             )
             if not row:
+                # Defensive — we pre-checked at the top of the handler, so
+                # reaching here means the row was deleted mid-request.
                 raise HTTPException(status_code=404, detail="Tone not found")
             tone = {
                 k: (v.isoformat() if hasattr(v, "isoformat") else v)
