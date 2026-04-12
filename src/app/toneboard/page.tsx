@@ -14,7 +14,6 @@ import {
   ChevronUp,
   ArrowLeftRight,
   Sparkles,
-  Loader2,
 } from "lucide-react";
 import {
   Preset,
@@ -25,7 +24,12 @@ import {
   PEDAL_COLORS,
   getEffectsByCategory,
 } from "@/lib/data";
-import { getPresets, savePreset, deletePreset, generateId } from "@/lib/store";
+import {
+  listPresets,
+  createPreset,
+  updatePreset,
+  deletePreset,
+} from "@/lib/store";
 import { SignalChain } from "@/components/SignalChain";
 import { PedalCard } from "@/components/PedalCard";
 import { AmpCard } from "@/components/AmpCard";
@@ -39,38 +43,65 @@ type View =
   | { type: "effect-picker"; category: EffectCategory }
   | { type: "chat" };
 
-function emptyPreset(): Preset {
+function blankDraft(): Preset {
   return {
-    id: generateId(),
+    id: "",
     name: "",
     ampModel: "",
     effects: { stompbox: null, modulation: null, delay: null, reverb: null },
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    createdAt: 0,
+    updatedAt: 0,
   };
 }
 
 export default function App() {
   const [view, setView] = useState<View>({ type: "library" });
   const [presets, setPresets] = useState<Preset[]>([]);
-  const [draft, setDraft] = useState<Preset>(emptyPreset());
+  const [draft, setDraft] = useState<Preset>(blankDraft());
   const [loaded, setLoaded] = useState(false);
   const [detailSlot, setDetailSlot] = useState<EffectCategory | null>(null);
   const [showSongInfo, setShowSongInfo] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiReasoning, setAiReasoning] = useState<string | null>(null);
+  const [creatingNew, setCreatingNew] = useState(false);
 
   useEffect(() => {
-    setPresets(getPresets());
-    setLoaded(true);
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await listPresets();
+        if (!cancelled) setPresets(list);
+      } catch (e) {
+        console.error("Failed to load presets:", e);
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const refreshPresets = useCallback(() => setPresets(getPresets()), []);
+  const refreshPresets = useCallback(async () => {
+    try {
+      const list = await listPresets();
+      setPresets(list);
+    } catch (e) {
+      console.error("Failed to refresh presets:", e);
+    }
+  }, []);
 
-  const openNewPreset = () => {
-    setDraft(emptyPreset());
-    setShowSongInfo(false);
-    setView({ type: "editor", presetId: null });
+  const openNewPreset = async () => {
+    if (creatingNew) return;
+    setCreatingNew(true);
+    try {
+      const created = await createPreset({});
+      setDraft(created);
+      setShowSongInfo(false);
+      setView({ type: "editor", presetId: created.id });
+    } catch (e) {
+      console.error("Failed to create preset:", e);
+    } finally {
+      setCreatingNew(false);
+    }
   };
 
   const openEditPreset = (p: Preset) => {
@@ -79,22 +110,37 @@ export default function App() {
     setView({ type: "editor", presetId: p.id });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!draft.ampModel) return;
     const name =
       draft.name.trim() ||
       (draft.songName
         ? `${draft.songName} — ${draft.ampModel}`
         : draft.ampModel);
-    savePreset({ ...draft, name });
-    refreshPresets();
-    setView({ type: "library" });
+    try {
+      await updatePreset(draft.id, {
+        name,
+        ampModel: draft.ampModel,
+        effects: draft.effects,
+        songName: draft.songName,
+        artistName: draft.artistName,
+        notes: draft.notes,
+      });
+      await refreshPresets();
+      setView({ type: "library" });
+    } catch (e) {
+      console.error("Failed to save preset:", e);
+    }
   };
 
-  const handleDelete = () => {
-    deletePreset(draft.id);
-    refreshPresets();
-    setView({ type: "library" });
+  const handleDelete = async () => {
+    try {
+      await deletePreset(draft.id);
+      await refreshPresets();
+      setView({ type: "library" });
+    } catch (e) {
+      console.error("Failed to delete preset:", e);
+    }
   };
 
   const handleSlotClick = (slot: "amp" | EffectCategory) => {
@@ -108,40 +154,6 @@ export default function App() {
         // Empty slot — go straight to picker
         setView({ type: "effect-picker", category: slot });
       }
-    }
-  };
-
-  const handleAiSuggest = async () => {
-    setAiLoading(true);
-    setAiReasoning(null);
-    try {
-      const res = await fetch("/api/suggest-preset", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          song_name: draft.songName || undefined,
-          artist: draft.artistName || undefined,
-          notes: draft.notes || undefined,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      setDraft((d) => ({
-        ...d,
-        ampModel: data.amp_model || d.ampModel,
-        effects: {
-          stompbox: data.effects?.stompbox ?? d.effects.stompbox,
-          modulation: data.effects?.modulation ?? d.effects.modulation,
-          delay: data.effects?.delay ?? d.effects.delay,
-          reverb: data.effects?.reverb ?? d.effects.reverb,
-        },
-      }));
-      setAiReasoning(data.reasoning || null);
-    } catch (e) {
-      console.error("AI suggestion failed:", e);
-      setAiReasoning("Failed to get suggestion. Is the AI backend running?");
-    } finally {
-      setAiLoading(false);
     }
   };
 
@@ -232,7 +244,8 @@ export default function App() {
           </button>
           <button
             onClick={openNewPreset}
-            className="w-14 h-14 rounded-full bg-[var(--color-amber)] text-black flex items-center justify-center shadow-lg shadow-[var(--color-amber)]/20 active:scale-95 transition-transform"
+            disabled={creatingNew}
+            className="w-14 h-14 rounded-full bg-[var(--color-amber)] text-black flex items-center justify-center shadow-lg shadow-[var(--color-amber)]/20 active:scale-95 transition-transform disabled:opacity-60"
           >
             <Plus className="w-6 h-6" strokeWidth={2.5} />
           </button>
@@ -491,26 +504,6 @@ export default function App() {
           <p className="text-[10px] text-[var(--color-text-faint)] mt-2 text-center font-[family-name:var(--font-mono)]">
             TAP A SLOT TO CHANGE • TAP A PEDAL FOR DETAILS
           </p>
-
-          {/* AI Suggest Button */}
-          <button
-            onClick={handleAiSuggest}
-            disabled={aiLoading}
-            className="mt-3 w-full py-2.5 rounded-lg bg-gradient-to-r from-purple-600/20 to-violet-600/20 border border-purple-500/30 text-purple-300 font-[family-name:var(--font-mono)] text-xs flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-50"
-          >
-            {aiLoading ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Sparkles className="w-3.5 h-3.5" />
-            )}
-            {aiLoading ? "THINKING..." : "✨ AI SUGGEST"}
-          </button>
-
-          {aiReasoning && (
-            <p className="mt-2 text-xs text-[var(--color-text-dim)] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-3 leading-relaxed">
-              {aiReasoning}
-            </p>
-          )}
         </div>
 
         {/* Song Info (collapsible) */}
