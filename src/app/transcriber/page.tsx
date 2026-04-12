@@ -16,6 +16,41 @@ interface Transcription {
   text: string;
 }
 
+type TranscribeError =
+  | {
+      stage: "http";
+      status: number;
+      statusText: string;
+      bodyText: string;
+      durationMs: number;
+      blobSize: number;
+      blobType: string;
+    }
+  | {
+      stage: "network";
+      name: string;
+      message: string;
+      cause?: string;
+      durationMs: number;
+      blobSize: number;
+      blobType: string;
+    }
+  | {
+      stage: "config";
+      message: string;
+    };
+
+function reportTranscribeError(err: TranscribeError) {
+  try {
+    fetch("/api/telemetry/transcribe-error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(err),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {}
+}
+
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 const BACKEND_API_KEY = process.env.NEXT_PUBLIC_WORKSHOP_BACKEND_API_KEY;
 
@@ -33,6 +68,8 @@ export default function TranscriberPage() {
   const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [lastError, setLastError] = useState<TranscribeError | null>(null);
+  const [errorCopied, setErrorCopied] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -64,30 +101,74 @@ export default function TranscriberPage() {
 
         setProcessing(true);
         setStatus("Processing transcription...");
+        setLastError(null);
 
         const ext = mType.includes("mp4") ? "recording.mp4" : "recording.webm";
         const formData = new FormData();
         formData.append("audio_data", blob, ext);
 
+        const started = performance.now();
         try {
           if (!BACKEND_URL || !BACKEND_API_KEY) {
-            throw new Error("Backend not configured");
+            const err: TranscribeError = {
+              stage: "config",
+              message:
+                "Missing NEXT_PUBLIC_BACKEND_URL or NEXT_PUBLIC_WORKSHOP_BACKEND_API_KEY",
+            };
+            setLastError(err);
+            reportTranscribeError(err);
+            setStatus("Transcription failed (config)");
+            return;
           }
 
-          const res = await fetch(`${BACKEND_URL}/transcribe`, {
-            method: "POST",
-            body: formData,
-            headers: { "X-API-Key": BACKEND_API_KEY },
-          });
+          let res: Response;
+          try {
+            res = await fetch(`${BACKEND_URL}/transcribe`, {
+              method: "POST",
+              body: formData,
+              headers: { "X-API-Key": BACKEND_API_KEY },
+            });
+          } catch (e) {
+            const durationMs = Math.round(performance.now() - started);
+            const errObj = e as Error & { cause?: unknown };
+            const err: TranscribeError = {
+              stage: "network",
+              name: errObj?.name ?? "Error",
+              message: errObj?.message ?? String(e),
+              cause:
+                errObj?.cause !== undefined ? String(errObj.cause) : undefined,
+              durationMs,
+              blobSize: blob.size,
+              blobType: blob.type,
+            };
+            setLastError(err);
+            reportTranscribeError(err);
+            setStatus(`Transcription failed (network, ${durationMs}ms)`);
+            return;
+          }
 
-          if (!res.ok) throw new Error(await res.text());
+          if (!res.ok) {
+            const durationMs = Math.round(performance.now() - started);
+            const bodyText = await res.text().catch(() => "");
+            const err: TranscribeError = {
+              stage: "http",
+              status: res.status,
+              statusText: res.statusText,
+              bodyText,
+              durationMs,
+              blobSize: blob.size,
+              blobType: blob.type,
+            };
+            setLastError(err);
+            reportTranscribeError(err);
+            setStatus(`Transcription failed (${res.status})`);
+            return;
+          }
 
           const data = await res.json();
           const id = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
           setTranscriptions((prev) => [{ id, text: data.text }, ...prev]);
           setStatus("Transcription completed. Tap the mic to record again.");
-        } catch {
-          setStatus("An error occurred during transcription.");
         } finally {
           setProcessing(false);
         }
@@ -151,9 +232,41 @@ export default function TranscriberPage() {
         </button>
 
         {/* Status */}
-        <p className="mt-4 mb-8 text-sm text-[var(--color-text-dim)] text-center font-[family-name:var(--font-mono)]">
+        <p className="mt-4 mb-2 text-sm text-[var(--color-text-dim)] text-center font-[family-name:var(--font-mono)]">
           {status}
         </p>
+
+        {/* Error detail */}
+        {lastError && (
+          <div className="mb-8 w-full max-w-lg">
+            <div className="bg-[var(--color-surface)] border border-red-500/40 rounded-xl p-3">
+              <div className="flex items-start gap-2">
+                <pre className="flex-1 text-[11px] leading-snug text-red-300 font-[family-name:var(--font-mono)] whitespace-pre-wrap break-all overflow-x-auto">
+                  {JSON.stringify(lastError, null, 2)}
+                </pre>
+                <button
+                  onClick={() => {
+                    navigator.clipboard
+                      .writeText(JSON.stringify(lastError, null, 2))
+                      .then(() => {
+                        setErrorCopied(true);
+                        setTimeout(() => setErrorCopied(false), 2000);
+                      });
+                  }}
+                  className="shrink-0 p-1.5 text-[var(--color-text-faint)] hover:text-[var(--color-text-dim)] transition-colors"
+                  title="Copy error"
+                >
+                  {errorCopied ? (
+                    <Check className="w-4 h-4 text-green-400" />
+                  ) : (
+                    <Copy className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {!lastError && <div className="mb-6" />}
 
         {/* Recording pulse indicator */}
         {isRecording && (
