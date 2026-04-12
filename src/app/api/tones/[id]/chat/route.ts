@@ -88,7 +88,7 @@ export async function POST(
         errorText
       );
       return NextResponse.json(
-        { error: `AI backend error: ${errorText}` },
+        { error: "AI backend error" },
         { status: response.status }
       );
     }

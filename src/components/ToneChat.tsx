@@ -291,7 +291,8 @@ export function ToneChat({ toneId, onBack, onToneUpdated }: ToneChatProps) {
                                 <button
                                     key={q}
                                     onClick={() => sendMessage(q)}
-                                    className="text-xs px-3 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:border-purple-500/30 hover:text-purple-300 transition-colors text-left"
+                                    disabled={sending || loading}
+                                    className="text-xs px-3 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:border-purple-500/30 hover:text-purple-300 transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
                                     {q}
                                 </button>
