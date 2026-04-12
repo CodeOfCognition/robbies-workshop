@@ -139,9 +139,16 @@ async def tone_chat(request: ToneChatRequest):
                 # Defensive — we pre-checked at the top of the handler, so
                 # reaching here means the row was deleted mid-request.
                 raise HTTPException(status_code=404, detail="Tone not found")
+            row_dict = dict(row)
+            effects = row_dict.get("effects")
+            if isinstance(effects, str):
+                try:
+                    row_dict["effects"] = _json.loads(effects)
+                except _json.JSONDecodeError:
+                    row_dict["effects"] = {}
             tone = {
                 k: (v.isoformat() if hasattr(v, "isoformat") else v)
-                for k, v in dict(row).items()
+                for k, v in row_dict.items()
             }
 
         return ToneChatResponse(

@@ -89,7 +89,7 @@ export async function POST(
       );
       return NextResponse.json(
         { error: "AI backend error" },
-        { status: response.status }
+        { status: 502 }
       );
     }
 

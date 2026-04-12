@@ -62,6 +62,7 @@ export default function App() {
   const [detailSlot, setDetailSlot] = useState<EffectCategory | null>(null);
   const [showSongInfo, setShowSongInfo] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [chatSending, setChatSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Tracks whether `draft` points at a freshly-created blank row that
   // has not yet been saved by the user. On Back from the editor we
@@ -146,6 +147,8 @@ export default function App() {
   const handleSave = async () => {
     if (!draft.ampModel) return;
     if (busy) return;
+    // Guard against clobbering an in-flight agent write with a stale draft.
+    if (chatSending) return;
     setBusy(true);
     const name =
       draft.name.trim() ||
@@ -175,6 +178,7 @@ export default function App() {
 
   const handleDelete = async () => {
     if (busy) return;
+    if (chatSending) return;
     setBusy(true);
     try {
       await deletePreset(draft.id);
@@ -238,6 +242,7 @@ export default function App() {
           setView({ type: "editor", presetId: view.presetId })
         }
         onToneUpdated={handleToneUpdatedFromChat}
+        onSendingChange={setChatSending}
       />
     );
   }
@@ -648,8 +653,9 @@ export default function App() {
         <div className="space-y-3 pt-2">
           <button
             onClick={handleSave}
-            disabled={!canSave || busy}
-            className={`w-full py-3.5 rounded-xl font-[family-name:var(--font-display)] text-lg tracking-wider flex items-center justify-center gap-2 transition-all ${canSave && !busy
+            disabled={!canSave || busy || chatSending}
+            title={chatSending ? "Waiting for TONEBOT to finish..." : undefined}
+            className={`w-full py-3.5 rounded-xl font-[family-name:var(--font-display)] text-lg tracking-wider flex items-center justify-center gap-2 transition-all ${canSave && !busy && !chatSending
               ? "bg-[var(--color-amber)] text-black active:scale-[0.98]"
               : "bg-[var(--color-surface)] text-[var(--color-text-faint)] cursor-not-allowed opacity-60"
               }`}
@@ -661,7 +667,7 @@ export default function App() {
           {isEditing && (
             <button
               onClick={handleDelete}
-              disabled={busy}
+              disabled={busy || chatSending}
               className="w-full py-3 rounded-xl border border-red-900/30 text-red-400 font-[family-name:var(--font-mono)] text-xs flex items-center justify-center gap-2 active:bg-red-950/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Trash2 className="w-3.5 h-3.5" />

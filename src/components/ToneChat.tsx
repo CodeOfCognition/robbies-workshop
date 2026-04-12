@@ -18,6 +18,7 @@ interface ToneChatProps {
     toneId: string;
     onBack: () => void;
     onToneUpdated: (tone: Preset) => void;
+    onSendingChange?: (sending: boolean) => void;
 }
 
 type ContentBlock = {
@@ -105,13 +106,27 @@ function MessageBlocks({
     );
 }
 
-export function ToneChat({ toneId, onBack, onToneUpdated }: ToneChatProps) {
+export function ToneChat({ toneId, onBack, onToneUpdated, onSendingChange }: ToneChatProps) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
+
+    // Surface sending state to the parent so the editor can lock Save
+    // while an agent turn is in flight.
+    useEffect(() => {
+        onSendingChange?.(sending);
+    }, [sending, onSendingChange]);
+
+    // Release the lock on unmount so a stale `sending=true` can't
+    // permanently disable Save if this component unmounts mid-turn.
+    useEffect(() => {
+        return () => {
+            onSendingChange?.(false);
+        };
+    }, [onSendingChange]);
 
     // Initial history load
     useEffect(() => {
