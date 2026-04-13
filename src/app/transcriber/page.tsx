@@ -38,6 +38,16 @@ type TranscribeError =
   | {
       stage: "config";
       message: string;
+    }
+  | {
+      stage: "silent";
+      reason: "empty_blob" | "no_chunks" | "muted_track";
+      blobSize: number;
+      blobType: string;
+      chunkCount: number;
+      nonEmptyChunkCount: number;
+      trackMuted: boolean;
+      trackReadyState: MediaStreamTrackState;
     };
 
 function reportTranscribeError(err: TranscribeError) {
@@ -86,18 +96,50 @@ export default function TranscriberPage() {
         : new MediaRecorder(stream);
 
       chunksRef.current = [];
+      let nonEmptyChunkCount = 0;
 
       recorder.addEventListener("dataavailable", (e) => {
         chunksRef.current.push(e.data);
+        if (e.data && e.data.size > 0) nonEmptyChunkCount += 1;
       });
 
       recorder.addEventListener("stop", async () => {
         const mType = recorder.mimeType || "audio/webm";
         const blob = new Blob(chunksRef.current, { type: mType });
 
+        const audioTrack = stream.getAudioTracks()[0];
+        const trackMuted = audioTrack?.muted ?? false;
+        const trackReadyState = audioTrack?.readyState ?? "ended";
+
         // Stop mic access
         stream.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
+
+        const EMPTY_BLOB_THRESHOLD = 1024;
+        let silentReason: "empty_blob" | "no_chunks" | "muted_track" | null =
+          null;
+        if (nonEmptyChunkCount === 0) silentReason = "no_chunks";
+        else if (blob.size < EMPTY_BLOB_THRESHOLD) silentReason = "empty_blob";
+        else if (trackMuted) silentReason = "muted_track";
+
+        if (silentReason) {
+          const err: TranscribeError = {
+            stage: "silent",
+            reason: silentReason,
+            blobSize: blob.size,
+            blobType: blob.type,
+            chunkCount: chunksRef.current.length,
+            nonEmptyChunkCount,
+            trackMuted,
+            trackReadyState,
+          };
+          setLastError(err);
+          reportTranscribeError(err);
+          setStatus(
+            "Microphone appears silent. Opening a new tab usually fixes this after sleep.",
+          );
+          return;
+        }
 
         setProcessing(true);
         setStatus("Processing transcription...");
@@ -174,7 +216,7 @@ export default function TranscriberPage() {
         }
       });
 
-      recorder.start();
+      recorder.start(1000);
       mediaRecorderRef.current = recorder;
       setIsRecording(true);
       setStatus("Recording...");
