@@ -19,7 +19,9 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ResultMessage,
     TextBlock,
+    ToolResultBlock,
     ToolUseBlock,
+    UserMessage,
     query,
 )
 
@@ -28,27 +30,27 @@ from .tools import make_tone_tools
 
 logger = logging.getLogger(__name__)
 
-MODEL = "claude-sonnet-4-5"
-MAX_TURNS = 8
-MAX_BUDGET_USD = 0.25
+MODEL = "claude-sonnet-4-6"
+MAX_TURNS = 10
+MAX_BUDGET_USD = 0.50
 
 
-_TOOL_INPUT_MAX_CHARS = 500
+_TOOL_INPUT_MAX_CHARS = 1000
+_TOOL_RESULT_MAX_CHARS = 5000
 
 
 def _history_to_prompt(prior_messages: list[dict], user_message: str) -> str:
     """Flatten prior conversation into a plain-text preamble for the fresh session.
 
-    Note: tool_result blocks from prior turns are not replayed — we only
-    summarize text and tool_use blocks so the agent can see what it decided
-    on previous turns, not what those tools actually returned.
+    Tool_use and tool_result blocks are interleaved in the order the agent
+    produced them so Claude sees each decision alongside its outcome.
     """
     lines: list[str] = []
     for msg in prior_messages:
         role = msg.get("role", "")
         blocks = msg.get("content", []) or []
         text_parts: list[str] = []
-        tool_use_lines: list[str] = []
+        tool_lines: list[str] = []
         for b in blocks:
             if not isinstance(b, dict):
                 continue
@@ -65,13 +67,28 @@ def _history_to_prompt(prior_messages: list[dict], user_message: str) -> str:
                     input_str = str(b.get("input"))
                 if len(input_str) > _TOOL_INPUT_MAX_CHARS:
                     input_str = input_str[:_TOOL_INPUT_MAX_CHARS] + "...(truncated)"
-                tool_use_lines.append(f"[tool_use: {name}({input_str})]")
+                tool_lines.append(f"[tool_use: {name}({input_str})]")
+            elif btype == "tool_result":
+                content = b.get("content")
+                if content is None:
+                    content_str = ""
+                elif isinstance(content, str):
+                    content_str = content
+                else:
+                    try:
+                        content_str = json.dumps(content, default=str)
+                    except (TypeError, ValueError):
+                        content_str = str(content)
+                if len(content_str) > _TOOL_RESULT_MAX_CHARS:
+                    content_str = content_str[:_TOOL_RESULT_MAX_CHARS] + "...(truncated)"
+                label = "tool_error" if b.get("is_error") else "tool_result"
+                tool_lines.append(f"[{label}: {content_str}]")
 
         text = " ".join(text_parts).strip()
-        if text or tool_use_lines:
+        if text or tool_lines:
             header = f"{role.capitalize()}: {text}" if text else f"{role.capitalize()}:"
             lines.append(header)
-            lines.extend(tool_use_lines)
+            lines.extend(tool_lines)
 
     if lines:
         return "Conversation so far:\n" + "\n".join(lines) + "\n\nUser: " + user_message
@@ -134,10 +151,32 @@ async def run_tone_chat(
                             "input": dict(block.input or {}),
                         }
                     )
-                # ThinkingBlock / ToolResultBlock intentionally dropped.
+        elif isinstance(message, UserMessage):
+            # SDK feeds tool_result blocks back as a UserMessage after each
+            # tool_use. Persist them so future turns can see what the tools
+            # returned, not just that they were called.
+            if isinstance(message.content, list):
+                for block in message.content:
+                    if isinstance(block, ToolResultBlock):
+                        collected_blocks.append(
+                            {
+                                "type": "tool_result",
+                                "content": block.content,
+                                "is_error": bool(block.is_error),
+                            }
+                        )
         elif isinstance(message, ResultMessage):
             result_subtype = message.subtype
             result_is_error = bool(getattr(message, "is_error", False))
+            logger.info(
+                "tone-chat run finished: subtype=%s is_error=%s num_turns=%s "
+                "duration_ms=%s total_cost_usd=%s",
+                message.subtype,
+                message.is_error,
+                message.num_turns,
+                message.duration_ms,
+                message.total_cost_usd,
+            )
 
     if result_subtype != "success" or result_is_error:
         logger.warning(
