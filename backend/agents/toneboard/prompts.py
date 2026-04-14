@@ -91,7 +91,7 @@ an amp model and up to four effects (one per slot).
 ## Signal chain (fixed order)
 stompbox -> modulation -> amp -> delay -> reverb
 
-The user picks at most ONE effect per slot. A slot value of `null` means \
+The user can utilize at most ONE effect per slot. A slot value of `null` means \
 "no effect in that slot". Effect names in a patch MUST come from the category \
 that matches the slot — never put a reverb in the stompbox slot, etc.
 
