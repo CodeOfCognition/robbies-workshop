@@ -47,6 +47,10 @@ At any given time, parts of the codebase may be half-complete or out of complian
 ## GitHub Integration
 You have access to the GitHub MCP. Use this to maintain commits, branches, and PRs. Note that every time you push to main though, it will redeploy the app.
 
+## Local Testing Before Push
+
+Always test features end-to-end locally before pushing. Both frontend and backend run on `localhost` — see the **Local Development** section in `README.md` for the two-terminal workflow. Pushing to `main` triggers deploys to Vercel and App Runner, so broken changes are visible immediately. Type checks and unit tests verify correctness, not feature behavior — actually exercise the feature in the browser (and the relevant backend endpoint) before claiming it's done.
+
 ## Collaboration Style
 
 The owner is an experienced developer and AI engineer. When working on this project:
