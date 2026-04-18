@@ -132,7 +132,8 @@ export default function BreathePage() {
   tickRef.current = () => {
     if (!runningRef.current) return;
     const now = performance.now();
-    const totalMs = durationRef.current * 60 * 1000;
+    const totalSec = Math.ceil((durationRef.current * 60) / CYCLE) * CYCLE;
+    const totalMs = totalSec * 1000;
     const elapsed = now - startedAt.current;
     const remaining = Math.max(0, totalMs - elapsed);
     const fracDone = Math.min(1, elapsed / totalMs);
