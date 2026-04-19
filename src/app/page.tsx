@@ -17,7 +17,7 @@ const apps = [
     description: "Speech to text via Whisper",
     href: "/transcriber",
     icon: Mic,
-    color: "#3b82f6",
+    color: "#8ab4d8",
   },
   {
     name: "BREATHE",

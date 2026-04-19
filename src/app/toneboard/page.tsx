@@ -252,18 +252,22 @@ export default function App() {
     return (
       <div className="min-h-dvh pb-24 px-4 pt-safe">
         <header className="pt-12 pb-6">
-          <div className="flex items-center gap-3 mb-1">
+          <div className="flex items-center gap-3">
             <Link href="/" className="p-1">
               <ChevronLeft className="w-5 h-5 text-[var(--color-text-dim)]" />
             </Link>
-            <div className="w-2 h-2 rounded-full bg-[var(--color-amber)] led-glow" />
-            <h1 className="font-[family-name:var(--font-display)] text-4xl tracking-wide text-[var(--color-text)]">
-              TONEBOARD
-            </h1>
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                <div className="w-2 h-2 rounded-full bg-[var(--color-amber)] led-glow" />
+                <h1 className="font-[family-name:var(--font-display)] text-4xl tracking-wide text-[var(--color-text)]">
+                  TONEBOARD
+                </h1>
+              </div>
+              <p className="text-[var(--color-text-dim)] text-sm ml-5">
+                Mustang Micro Plus
+              </p>
+            </div>
           </div>
-          <p className="text-[var(--color-text-dim)] text-sm ml-5">
-            Mustang Micro Plus
-          </p>
         </header>
 
         {error && (

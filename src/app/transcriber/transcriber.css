@@ -1,0 +1,230 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400&display=swap");
+
+.transcriber-app {
+  --tr-accent: #8ab4d8;
+  --tr-accent-dim: #6a94b8;
+  --tr-accent-glow: rgba(138, 180, 216, 0.28);
+  --tr-rec: #e06464;
+  --tr-rec-glow: rgba(224, 100, 100, 0.35);
+}
+
+.transcriber-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tr-accent);
+  box-shadow: 0 0 10px var(--tr-accent-glow);
+}
+
+.transcriber-title {
+  font-family: "Fraunces", serif;
+  font-size: 26px;
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.transcriber-subtitle {
+  color: var(--color-text-dim);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+/* Stage */
+.transcriber-stage {
+  margin-top: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+}
+
+/* Mic button */
+.transcriber-mic {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--tr-accent);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  color: var(--color-bg);
+  box-shadow: 0 6px 20px rgba(138, 180, 216, 0.18), 0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease, background 0.3s ease, box-shadow 0.3s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.transcriber-mic:hover {
+  transform: translateY(-1px);
+}
+
+.transcriber-mic:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.transcriber-mic:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.transcriber-mic:disabled:hover {
+  transform: none;
+}
+
+.transcriber-mic svg {
+  width: 24px;
+  height: 24px;
+}
+
+.transcriber-mic.recording {
+  background: var(--tr-rec);
+  box-shadow: 0 0 0 0 var(--tr-rec-glow);
+  animation: trRecPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes trRecPulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--tr-rec-glow); }
+  50%      { box-shadow: 0 0 0 14px rgba(224, 100, 100, 0); }
+}
+
+/* Status */
+.transcriber-status {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
+.transcriber-status-text {
+  font-size: 13px;
+  color: var(--color-text-dim);
+  font-weight: 300;
+}
+
+.transcriber-timer {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--color-text-faint);
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Waveform */
+.transcriber-viz-wrap {
+  width: 100%;
+  max-width: 520px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.transcriber-viz {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.transcriber-viz-bars {
+  fill: var(--tr-accent);
+  filter: drop-shadow(0 0 4px var(--tr-accent-glow));
+}
+
+.transcriber-viz-fade-l {
+  fill: url(#trFadeL);
+  pointer-events: none;
+}
+
+/* History / transcript entries */
+.transcriber-entries {
+  width: 100%;
+  margin-top: 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.transcriber-entry {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 10px 10px 10px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  transition: border-color 0.2s;
+}
+
+.transcriber-entry:hover {
+  border-color: var(--color-border-bright);
+}
+
+.transcriber-entry-text {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 300;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  flex: 1;
+  padding-top: 2px;
+}
+
+.transcriber-icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-faint);
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, background 0.2s;
+}
+
+.transcriber-icon-btn:hover {
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+}
+
+.transcriber-icon-btn.copied {
+  color: var(--tr-accent);
+}
+
+/* Error panel */
+.transcriber-error {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid rgba(224, 100, 100, 0.4);
+  border-radius: 10px;
+  padding: 10px 10px 10px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.transcriber-error pre {
+  flex: 1;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #e8a0a0;
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .transcriber-title {
+    font-size: 22px;
+  }
+}

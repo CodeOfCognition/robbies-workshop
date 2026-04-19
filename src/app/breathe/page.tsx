@@ -218,14 +218,18 @@ export default function BreathePage() {
   return (
     <div className="breathe-app min-h-dvh flex flex-col px-4 pt-safe">
       <header className="pt-12 pb-2">
-        <div className="flex items-center gap-3 mb-1">
+        <div className="flex items-center gap-3">
           <Link href="/" className="p-1">
             <ChevronLeft className="w-5 h-5 text-[var(--color-text-dim)]" />
           </Link>
-          <div className="breathe-dot" />
-          <h1 className="breathe-title">Breathe</h1>
+          <div>
+            <div className="flex items-center gap-[10px] mb-1">
+              <div className="breathe-dot" />
+              <h1 className="breathe-title">Breathe</h1>
+            </div>
+            <p className="breathe-subtitle ml-[17px]">Box breathing</p>
+          </div>
         </div>
-        <p className="breathe-subtitle ml-[17px]">Box breathing</p>
       </header>
 
       <div className="breathe-durations">
