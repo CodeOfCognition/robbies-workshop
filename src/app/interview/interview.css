@@ -1,0 +1,1094 @@
+.interview-app {
+  --iv-accent: #d4a84a;
+  --iv-accent-dim: #a8853a;
+  --iv-accent-soft: rgba(212, 168, 74, 0.14);
+  --iv-accent-glow: rgba(212, 168, 74, 0.28);
+  --iv-rec: #e06464;
+  --iv-rec-glow: rgba(224, 100, 100, 0.35);
+  --iv-surface-2: color-mix(in oklab, var(--color-surface) 70%, #fff);
+  --iv-surface-3: color-mix(in oklab, var(--color-surface) 55%, #fff);
+  --iv-border-2: color-mix(in oklab, var(--color-border) 70%, #fff);
+}
+
+/* Header */
+.interview-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--iv-accent);
+  box-shadow: 0 0 10px var(--iv-accent-glow);
+}
+
+.interview-title {
+  font-family: "Fraunces", serif;
+  font-size: 26px;
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.interview-subtitle {
+  color: var(--color-text-dim);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+/* Mode chips */
+.interview-modes {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  padding: 3px;
+  border-radius: 999px;
+  margin-top: 18px;
+  margin-bottom: 22px;
+  align-self: flex-start;
+}
+
+.interview-mode-chip {
+  background: transparent;
+  border: none;
+  color: var(--color-text-dim);
+  font-family: inherit;
+  font-weight: 400;
+  font-size: 11px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  cursor: pointer;
+  letter-spacing: 0.06em;
+  transition: background 0.25s, color 0.25s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.interview-mode-chip.active {
+  background: var(--iv-surface-2);
+  color: var(--color-text);
+}
+
+.interview-mode-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.interview-mode-chip .pill-soon {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 8.5px;
+  letter-spacing: 0.2em;
+  color: var(--color-text-faint);
+}
+
+/* Drop zones */
+.interview-drops {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.interview-drop {
+  position: relative;
+  background: var(--color-surface);
+  border: 1px dashed var(--iv-border-2);
+  border-radius: 14px;
+  padding: 22px 20px 18px;
+  min-height: 168px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  cursor: pointer;
+  transition: border-color 0.25s, background 0.25s, transform 0.25s;
+}
+
+.interview-drop:hover {
+  border-color: color-mix(in oklab, var(--iv-accent) 40%, var(--iv-border-2));
+  background: var(--iv-surface-2);
+}
+
+.interview-drop.dragover {
+  border-color: var(--iv-accent);
+  background: color-mix(in oklab, var(--iv-accent) 7%, var(--color-surface));
+}
+
+.interview-drop.filled {
+  border-style: solid;
+  border-color: var(--iv-border-2);
+  background: var(--color-surface);
+}
+
+.interview-drop.filled:hover {
+  border-color: color-mix(in oklab, var(--iv-accent) 25%, var(--iv-border-2));
+}
+
+.interview-drop-kicker {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: var(--color-text-faint);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.interview-drop-title {
+  font-family: "Fraunces", serif;
+  font-size: 20px;
+  font-weight: 300;
+  letter-spacing: 0.005em;
+}
+
+.interview-drop-hint {
+  font-size: 12.5px;
+  color: var(--color-text-dim);
+  line-height: 1.5;
+  margin-top: auto;
+}
+
+.interview-drop-glyph {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--iv-accent-soft);
+  color: var(--iv-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in oklab, var(--iv-accent) 22%, transparent);
+  margin-bottom: 2px;
+}
+
+.interview-drop-glyph svg {
+  width: 16px;
+  height: 16px;
+}
+
+.interview-drop.filled .interview-drop-glyph {
+  background: color-mix(in oklab, var(--iv-accent) 18%, var(--iv-surface-2));
+}
+
+.interview-drop-file-name {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--color-text);
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.interview-drop-file-meta {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: var(--color-text-faint);
+  letter-spacing: 0.1em;
+  margin-top: 4px;
+}
+
+.interview-drop-clear {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: transparent;
+  border: none;
+  color: var(--color-text-faint);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: inline-flex;
+  transition: color 0.2s, background 0.2s;
+}
+
+.interview-drop-clear:hover {
+  color: var(--color-text);
+  background: var(--iv-surface-3);
+}
+
+/* Advanced settings */
+.interview-advanced {
+  margin-top: 28px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 20px;
+}
+
+.interview-adv-toggle {
+  background: transparent;
+  border: none;
+  color: var(--color-text-dim);
+  font-family: inherit;
+  font-weight: 400;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  transition: color 0.2s;
+}
+
+.interview-adv-toggle:hover {
+  color: var(--color-text);
+}
+
+.interview-adv-toggle .chev {
+  transition: transform 0.25s;
+}
+
+.interview-advanced.open .interview-adv-toggle .chev {
+  transform: rotate(90deg);
+}
+
+.interview-adv-body {
+  display: none;
+  margin-top: 16px;
+  gap: 18px;
+  flex-direction: column;
+}
+
+.interview-advanced.open .interview-adv-body {
+  display: flex;
+}
+
+.interview-adv-label {
+  font-size: 11px;
+  color: var(--color-text-dim);
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+.interview-adv-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.interview-adv-chip {
+  background: transparent;
+  border: 1px solid var(--iv-border-2);
+  color: var(--color-text-dim);
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+
+.interview-adv-chip:hover {
+  color: var(--color-text);
+}
+
+.interview-adv-chip.active {
+  background: color-mix(in oklab, var(--iv-accent) 12%, var(--iv-surface-2));
+  color: var(--color-text);
+  border-color: color-mix(in oklab, var(--iv-accent) 45%, var(--iv-border-2));
+}
+
+.interview-adv-textarea {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  color: var(--color-text);
+  font-family: inherit;
+  font-weight: 300;
+  font-size: 13.5px;
+  line-height: 1.55;
+  padding: 12px 14px;
+  outline: none;
+  transition: border-color 0.2s;
+  resize: vertical;
+  min-height: 92px;
+  width: 100%;
+  letter-spacing: 0.01em;
+}
+
+.interview-adv-textarea:focus {
+  border-color: color-mix(in oklab, var(--iv-accent) 35%, var(--color-border));
+}
+
+.interview-adv-textarea::placeholder {
+  color: var(--color-text-faint);
+}
+
+.interview-adv-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.interview-adv-row-title {
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.interview-adv-row-sub {
+  font-size: 11.5px;
+  color: var(--color-text-dim);
+  margin-top: 3px;
+}
+
+.interview-switch {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  background: var(--iv-surface-3);
+  border: 1px solid var(--iv-border-2);
+  border-radius: 999px;
+  display: inline-block;
+  flex-shrink: 0;
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.interview-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-text-faint);
+  transition: transform 0.2s;
+}
+
+.interview-coming-soon {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: var(--color-text-faint);
+  text-transform: uppercase;
+  background: var(--iv-surface-3);
+  padding: 2px 7px;
+  border-radius: 4px;
+  margin-left: 8px;
+}
+
+/* Primary button */
+.interview-primary {
+  margin-top: 28px;
+  background: var(--iv-accent);
+  color: #1a1a1a;
+  border: none;
+  font-family: inherit;
+  font-weight: 500;
+  font-size: 13.5px;
+  letter-spacing: 0.04em;
+  padding: 14px 20px;
+  border-radius: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  align-self: stretch;
+  width: 100%;
+  box-shadow: 0 6px 20px rgba(212, 168, 74, 0.14), 0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s, box-shadow 0.2s, background 0.2s;
+}
+
+.interview-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px rgba(212, 168, 74, 0.22), 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.interview-primary:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.interview-primary:disabled {
+  background: var(--iv-surface-2);
+  color: var(--color-text-faint);
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.interview-primary svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.8;
+}
+
+/* Preparing view */
+.interview-preparing {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 28px;
+  padding: 60px 0;
+  min-height: 420px;
+}
+
+.interview-prep-glyph {
+  position: relative;
+  width: 120px;
+  height: 120px;
+}
+
+.interview-prep-glyph svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.interview-prep-ring {
+  fill: none;
+  stroke: var(--iv-accent);
+  stroke-width: 1.2;
+  opacity: 0.8;
+  transform-origin: 50% 50%;
+}
+
+.interview-prep-ring.r1 {
+  animation: ivPrepRing 6s linear infinite;
+}
+.interview-prep-ring.r2 {
+  animation: ivPrepRing 9s linear infinite reverse;
+  opacity: 0.5;
+}
+.interview-prep-ring.r3 {
+  animation: ivPrepRing 12s linear infinite;
+  opacity: 0.3;
+}
+
+@keyframes ivPrepRing {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.interview-prep-core {
+  position: absolute;
+  inset: 40%;
+  border-radius: 50%;
+  background: var(--iv-accent);
+  box-shadow: 0 0 24px var(--iv-accent-glow);
+  animation: ivPrepPulse 3.2s ease-in-out infinite;
+}
+
+@keyframes ivPrepPulse {
+  0%, 100% { transform: scale(0.85); opacity: 0.8; }
+  50% { transform: scale(1.15); opacity: 1; }
+}
+
+.interview-prep-title {
+  font-family: "Fraunces", serif;
+  font-size: 28px;
+  font-weight: 300;
+  letter-spacing: 0.005em;
+  text-align: center;
+}
+
+.interview-prep-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--color-text-faint);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  min-height: 18px;
+}
+
+.interview-prep-step {
+  opacity: 0;
+  transition: opacity 0.6s;
+}
+
+.interview-prep-step.active {
+  color: var(--iv-accent);
+  opacity: 1;
+}
+
+.interview-prep-step.done {
+  color: var(--color-text-dim);
+  opacity: 1;
+}
+
+/* Chat view */
+.interview-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0 20px;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 24px;
+  gap: 12px;
+}
+
+.interview-chat-role {
+  font-family: "Fraunces", serif;
+  font-size: 16px;
+  font-weight: 300;
+  color: var(--color-text);
+  letter-spacing: 0.005em;
+}
+
+.interview-chat-company {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  color: var(--color-text-faint);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.interview-voice-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-faint);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-family: "JetBrains Mono", monospace;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.interview-voice-dot-off {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-text-faint);
+}
+
+.interview-chat-counter {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--color-text-dim);
+  letter-spacing: 0.1em;
+}
+
+.interview-chat-counter b {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.interview-chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-bottom: 24px;
+}
+
+.interview-msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 88%;
+  animation: ivFadeIn 0.45s ease;
+}
+
+@keyframes ivFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.interview-msg-who {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+  margin-bottom: 8px;
+}
+
+.interview-msg.ai .interview-msg-who {
+  color: color-mix(in oklab, var(--iv-accent) 80%, var(--color-text-dim));
+}
+
+.interview-msg-bubble {
+  padding: 14px 16px;
+  border-radius: 14px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  letter-spacing: 0.005em;
+  color: var(--color-text);
+  font-weight: 300;
+}
+
+.interview-msg.ai .interview-msg-bubble {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-top-left-radius: 4px;
+}
+
+.interview-msg.user {
+  align-self: flex-end;
+  max-width: 80%;
+}
+
+.interview-msg.user .interview-msg-who {
+  align-self: flex-end;
+  color: var(--color-text-dim);
+}
+
+.interview-msg.user .interview-msg-bubble {
+  background: color-mix(in oklab, var(--iv-accent) 12%, var(--iv-surface-2));
+  border: 1px solid color-mix(in oklab, var(--iv-accent) 22%, var(--color-border));
+  color: var(--color-text);
+  border-top-right-radius: 4px;
+}
+
+.interview-typing-dots {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.interview-typing-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-text-dim);
+  animation: ivTyping 1.4s infinite ease-in-out;
+}
+
+.interview-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.interview-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes ivTyping {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+.interview-typing-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 16px;
+  background: var(--color-text-dim);
+  margin-left: 2px;
+  vertical-align: -3px;
+  animation: ivBlink 1s step-end infinite;
+}
+
+@keyframes ivBlink {
+  50% { opacity: 0; }
+}
+
+/* Compose bar */
+.interview-compose {
+  position: sticky;
+  bottom: 0;
+  background: linear-gradient(to top, var(--color-bg) 70%, transparent);
+  padding: 22px 0 8px;
+  margin-top: auto;
+}
+
+.interview-compose-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 8px 14px 8px 8px;
+  transition: border-color 0.25s, background 0.25s;
+}
+
+.interview-compose-inner.recording {
+  border-color: color-mix(in oklab, var(--iv-rec) 40%, var(--color-border));
+  background: color-mix(in oklab, var(--iv-rec) 6%, var(--color-surface));
+}
+
+.interview-mic-btn {
+  position: relative;
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--iv-accent);
+  border: none;
+  color: #1a1a1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.25s, transform 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.interview-mic-btn:hover {
+  transform: translateY(-1px);
+}
+
+.interview-mic-btn:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.interview-mic-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.interview-mic-btn.recording {
+  background: var(--iv-rec);
+  animation: ivRecPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes ivRecPulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--iv-rec-glow); }
+  50% { box-shadow: 0 0 0 10px rgba(224, 100, 100, 0); }
+}
+
+.interview-compose-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  min-width: 0;
+}
+
+.interview-compose-hint {
+  font-size: 13px;
+  color: var(--color-text-dim);
+  letter-spacing: 0.01em;
+}
+
+.interview-compose-hint .kbd {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--color-text-faint);
+  margin-left: 6px;
+  padding: 1px 5px;
+  border: 1px solid var(--iv-border-2);
+  border-radius: 3px;
+}
+
+.interview-compose-viz-wrap {
+  flex: 1;
+  height: 36px;
+  position: relative;
+  display: none;
+  align-items: center;
+}
+
+.interview-compose.active-viz .interview-compose-viz-wrap {
+  display: flex;
+}
+
+.interview-compose.active-viz .interview-compose-hint {
+  display: none;
+}
+
+.interview-compose-viz {
+  width: 100%;
+  height: 100%;
+}
+
+.interview-compose-bars {
+  fill: var(--iv-rec);
+  filter: drop-shadow(0 0 4px var(--iv-rec-glow));
+}
+
+.interview-compose-timer {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11.5px;
+  color: var(--color-text-dim);
+  letter-spacing: 0.08em;
+  padding: 0 4px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.interview-compose-end-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-faint);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-family: "JetBrains Mono", monospace;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 999px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.interview-compose-end-btn:hover {
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+/* Summary view */
+.interview-summary-kicker {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: var(--color-text-faint);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.interview-summary-title {
+  font-family: "Fraunces", serif;
+  font-weight: 200;
+  font-size: 40px;
+  line-height: 1.1;
+  letter-spacing: -0.005em;
+  margin: 0 0 12px;
+  max-width: 560px;
+}
+
+.interview-summary-sub {
+  font-size: 14px;
+  color: var(--color-text-dim);
+  max-width: 520px;
+  line-height: 1.55;
+}
+
+.interview-summary-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 32px 0;
+}
+
+.interview-stat {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.interview-stat-label {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+}
+
+.interview-stat-value {
+  font-family: "Fraunces", serif;
+  font-size: 24px;
+  font-weight: 300;
+  color: var(--color-text);
+}
+
+.interview-stat-value .unit {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--color-text-dim);
+  letter-spacing: 0.06em;
+  margin-left: 4px;
+}
+
+.interview-section-title {
+  font-family: "Fraunces", serif;
+  font-size: 20px;
+  font-weight: 300;
+  letter-spacing: 0.005em;
+}
+
+.interview-section-sub {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: var(--color-text-faint);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.interview-feedback-item {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+.interview-feedback-marker {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-top: 8px;
+}
+
+.interview-feedback-marker.plus {
+  background: #8fbf88;
+  box-shadow: 0 0 8px rgba(143, 191, 136, 0.35);
+}
+
+.interview-feedback-marker.delta {
+  background: var(--iv-accent);
+  box-shadow: 0 0 8px var(--iv-accent-glow);
+}
+
+.interview-feedback-title {
+  font-weight: 500;
+  font-size: 13.5px;
+  color: var(--color-text);
+  letter-spacing: 0.005em;
+  margin-bottom: 4px;
+}
+
+.interview-feedback-desc {
+  font-size: 13px;
+  color: var(--color-text-dim);
+  line-height: 1.55;
+}
+
+.interview-qa-item {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.interview-qa-summary {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+}
+
+.interview-qa-num {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  color: var(--color-text-faint);
+  letter-spacing: 0.1em;
+}
+
+.interview-qa-q {
+  font-size: 13.5px;
+  color: var(--color-text);
+  font-weight: 300;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.interview-qa-score {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  color: var(--color-text-dim);
+  letter-spacing: 0.08em;
+}
+
+.interview-qa-score b {
+  color: var(--iv-accent);
+  font-weight: 500;
+}
+
+.interview-secondary {
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--iv-border-2);
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.interview-secondary:hover {
+  border-color: var(--iv-accent);
+  background: var(--color-surface);
+}
+
+/* Preview state in compose bar */
+.interview-compose.previewing .interview-compose-inner {
+  border-radius: 16px;
+  padding: 10px 12px;
+  flex-wrap: wrap;
+}
+
+.interview-preview-textarea {
+  width: 100%;
+  min-height: 60px;
+  max-height: 160px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--color-text);
+  font-size: 14px;
+  line-height: 1.55;
+  resize: vertical;
+  font-family: inherit;
+  letter-spacing: 0.005em;
+}
+
+.interview-preview-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.interview-preview-send {
+  background: var(--iv-accent);
+  color: #1a1a1a;
+  border: none;
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.interview-preview-send:hover {
+  opacity: 0.85;
+}
+
+.interview-preview-discard {
+  background: transparent;
+  color: var(--color-text-dim);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.interview-preview-discard:hover {
+  color: var(--color-text);
+  border-color: var(--color-text-dim);
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .interview-title {
+    font-size: 22px;
+  }
+  .interview-drops {
+    grid-template-columns: 1fr;
+  }
+  .interview-summary-stats {
+    grid-template-columns: 1fr;
+  }
+  .interview-summary-title {
+    font-size: 28px;
+  }
+}

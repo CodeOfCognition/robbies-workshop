@@ -11,6 +11,8 @@ This is a personal Swiss Army knife PWA — a single authenticated shell that ho
 - **ToneBoard** — Guitar amp preset builder for the Fender Mustang Micro Plus. Visual signal chain, amp/effects selection, AI-powered tone suggestions.
 - **Transcriber** — Speech-to-text utility using OpenAI Whisper. Being reworked to support long recordings via the AWS backend (Vercel has body size and timeout limits that break multi-minute audio).
 - **Spotify** (planned) — Separate sub-app for interfacing with personal Spotify data.
+- **Breathe** — A simple box breathing app.
+- **Interview Practice** - A mock interview app that uses AI to conduct interviews and provide feedback.
 
 ## Tech Stack
 
