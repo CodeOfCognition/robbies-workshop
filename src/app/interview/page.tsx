@@ -8,72 +8,87 @@ import {
   useMemo,
 } from "react";
 import "./interview.css";
+import {
+  type Profile,
+  type Job,
+  type InterviewRecord,
+  type Memory,
+  type TranscriptMsg,
+  type ProposedMemory,
+  type InterviewType,
+} from "@/lib/interview-mapper";
+import {
+  listProfiles,
+  createProfile,
+  updateProfile as apiUpdateProfile,
+  deleteProfile as apiDeleteProfile,
+  uploadResume,
+  deleteResume,
+  getResumeSignedUrl,
+  listJobs,
+  createJob,
+  updateJob as apiUpdateJob,
+  deleteJob as apiDeleteJob,
+  listInterviews,
+  createInterview,
+  updateInterview,
+  deleteInterview as apiDeleteInterview,
+} from "@/lib/interview-store";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 const BACKEND_API_KEY = process.env.NEXT_PUBLIC_WORKSHOP_BACKEND_API_KEY;
 
-const STORE_KEY = "interview.store.v4";
 const PANE_KEY = "interview.pane";
+const ACTIVE_PROFILE_KEY = "interview.activeProfileId";
+
+// ===========================================================================
+//  IN-APP CONFIRM / ALERT  (replaces window.confirm and window.alert)
+// ===========================================================================
+interface ConfirmRequest {
+  title: string;
+  message?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  destructive?: boolean;
+  hideCancel?: boolean;
+}
+interface ActiveDialog extends ConfirmRequest {
+  resolve: (ok: boolean) => void;
+}
+
+// Module-level dispatcher installed by the mounted ConfirmModalHost. Lets
+// any component (or non-component code) call askConfirm / showAlert without
+// prop-drilling.
+let dialogDispatch: ((req: ActiveDialog) => void) | null = null;
+
+function askConfirm(req: ConfirmRequest): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (!dialogDispatch) {
+      // Fallback so we never silently break — but the host should always be
+      // mounted while the page is live.
+      resolve(true);
+      return;
+    }
+    dialogDispatch({ ...req, resolve });
+  });
+}
+
+function showAlert(title: string, message?: string): Promise<void> {
+  return askConfirm({
+    title,
+    message,
+    hideCancel: true,
+    confirmLabel: "OK",
+  }).then(() => undefined);
+}
 
 // ===========================================================================
 //  TYPES
 // ===========================================================================
 type Pane = "interviews" | "jobs" | "profile";
 type OverlayName = "prep" | "chat" | "summary" | null;
-type InterviewType = "hr" | "hm" | "other";
 type ComposeState = "idle" | "recording" | "transcribing" | "preview";
 
-interface ResumeFile {
-  name: string;
-  size: number;
-  ext: string;
-}
-interface Memory {
-  id: string;
-  text: string;
-  createdAt: number;
-}
-interface Profile {
-  id: string;
-  name: string;
-  resume: ResumeFile | null;
-  createdAt: number;
-  memories: Memory[];
-}
-interface Job {
-  id: string;
-  company: string;
-  role: string;
-  url: string;
-  posting: string;
-  research: string;
-  createdAt: number;
-}
-interface TranscriptMsg {
-  role: "interviewer" | "candidate";
-  text: string;
-}
-interface ProposedMemory {
-  id: string;
-  text: string;
-  state: "pending" | "accepted" | "rejected";
-  memId?: string;
-}
-interface InterviewRecord {
-  id: string;
-  jobId: string;
-  profileId: string;
-  type: InterviewType;
-  notes: string;
-  title: string;
-  createdAt: number;
-  durationMs: number;
-  questions: number;
-  status: string;
-  transcript: TranscriptMsg[];
-  feedback: string | null;
-  proposedMemories: ProposedMemory[] | null;
-}
 interface Store {
   activeProfileId: string;
   profiles: Profile[];
@@ -131,154 +146,12 @@ const SAMPLE_FEEDBACK = `Overall, this read as a **mid-confidence** round. You o
 
 Strong specificity, soft endings. Fix the closes and this is a confident round.`;
 
-function buildDefaultStore(): Store {
-  const now = Date.now();
-  return {
-    activeProfileId: "p_robbie",
-    profiles: [
-      {
-        id: "p_robbie",
-        name: "Robbie",
-        resume: null,
-        createdAt: now - 1000 * 60 * 60 * 24 * 30,
-        memories: [
-          {
-            id: "m1",
-            text: "I tend to bury the outcome — talk about activity, not result. Push myself to land on a number or decision.",
-            createdAt: now - 1000 * 60 * 60 * 24 * 8,
-          },
-          {
-            id: "m2",
-            text: 'Strong on collaboration stories; weaker on hard prioritization calls. Practice the "I made the call" framing.',
-            createdAt: now - 1000 * 60 * 60 * 24 * 7,
-          },
-          {
-            id: "m3",
-            text: "Default voice is collegial; could borrow more conviction in HR screens. Slow down, drop hedges.",
-            createdAt: now - 1000 * 60 * 60 * 24 * 5,
-          },
-          {
-            id: "m4",
-            text: "Lean story: checkout redesign — owns end-to-end, real number (18% → 11% drop-off).",
-            createdAt: now - 1000 * 60 * 60 * 24 * 4,
-          },
-          {
-            id: "m5",
-            text: "Lean story: sales vs. platform prioritization — clean call with mapped dependencies.",
-            createdAt: now - 1000 * 60 * 60 * 24 * 3,
-          },
-          {
-            id: "m6",
-            text: "Need a 2-sentence version of the 2022 gap. Not defensive, just factual.",
-            createdAt: now - 1000 * 60 * 60 * 24 * 2,
-          },
-        ],
-      },
-    ],
-    jobs: [
-      {
-        id: "job_northwind",
-        company: "Northwind",
-        role: "Senior Product Designer",
-        url: "",
-        posting: `# Senior Product Designer — Northwind
-
-We're a 60-person Series B building tools for ops teams in regulated industries. This role owns end-to-end design for our workflow automation product.
-
-## What you'll do
-- Lead design for a 4-engineer, 1-PM pod
-- Partner with research on weekly customer interviews
-- Drive the visual system as we scale
-
-## What we're looking for
-- 6+ years in product design, ideally B2B SaaS
-- Comfort with ambiguity and cross-functional decision-making
-- Strong written + verbal communication`,
-        research: `# Research · Northwind
-
-## The company
-- Series B, 60 people, NYC + remote.
-- Founded by two ex-Palantir PMs; ops automation in regulated verticals (insurance, healthcare ops, logistics).
-- Last raise: $42M in 2024 from Index. Burn-conscious; talk about *durable growth*.
-
-## The product
-- Workflow builder + audit trail; replaces brittle internal tools and Zapier-of-doom setups.
-- Heavy use of forms-as-state-machines. Visual canvas + table view duality.
-
-## The team I'd join
-- Reports to **Ana Reyes**, Head of Design (ex-Asana, ex-Stripe).
-- Pod has 4 eng, 1 PM, 1 designer (currently). Working session culture, written docs.
-- Recent posts on their blog emphasize *"design as a load-bearing function"*.
-
-## What to lean into
-- Stories with measurable outcomes (Northwind values numbers).
-- Examples of working with research weekly.
-- Your B2B chops — they screen out portfolios that read as consumer-only.
-
-## What to avoid
-- Visual flash without rationale.
-- Vague "I led design" claims — they will ask for specifics.`,
-        createdAt: now - 1000 * 60 * 60 * 48,
-      },
-      {
-        id: "job_wayfinder",
-        company: "Wayfinder",
-        role: "Staff Designer, Platform",
-        url: "",
-        posting: `# Staff Designer, Platform — Wayfinder
-
-Wayfinder is the data platform for marketplaces. We're hiring a Staff Designer to lead design for our developer-facing platform surfaces.`,
-        research: "",
-        createdAt: now - 1000 * 60 * 60 * 24 * 6,
-      },
-    ],
-    interviews: [
-      {
-        id: "iv_1",
-        jobId: "job_northwind",
-        profileId: "p_robbie",
-        type: "hm",
-        notes:
-          "Lean into the prioritization story — they asked for one in the recruiter call.",
-        createdAt: now - 1000 * 60 * 60 * 24,
-        durationMs: 14 * 60 * 1000 + 32 * 1000,
-        questions: 6,
-        title: "Hiring manager screen",
-        status: "done",
-        transcript: [
-          { role: "interviewer", text: "Hey — thanks for hopping on. Can you hear me okay?" },
-          { role: "candidate", text: "Yeah, loud and clear." },
-          { role: "interviewer", text: "Cool. So this is gonna be pretty informal — like 25 minutes, a few questions about your background and the role. Sound good?" },
-          { role: "candidate", text: "Sounds good." },
-          { role: "interviewer", text: "Alright. Walk me through a project you're most proud of in the last year." },
-          { role: "candidate", text: "Sure. I led the checkout redesign at my last company — small team, four engineers and a PM. The big constraint was we couldn't change backend pricing logic for the first phase, so we had to make the wins purely on the frontend. We took drop-off from 18% to 11% over six weeks." },
-          { role: "interviewer", text: "Nice. Out of curiosity, what was driving that 18%?" },
-          { role: "candidate", text: "Mostly shipping. Tax and shipping showed up at the very last step and the numbers surprised people. We pulled an estimate up to the cart page and that alone moved the needle a few points." },
-          { role: "interviewer", text: "Got it. And how did you decide what to cut from scope?" },
-          { role: "candidate", text: "We mapped every step against the abandonment data we already had, and prioritized the three steps with the steepest drop. Anything that didn't move one of those numbers got pushed." },
-          { role: "interviewer", text: "Okay. Tell me about a hard prioritization call between two stakeholders." },
-          { role: "candidate", text: "Sales wanted a custom-quote flow for one enterprise lead. Platform team needed time to fix a perf regression that was hitting everyone. We discussed it as a group and ended up phasing the perf work in first, then the custom flow." },
-          { role: "interviewer", text: "Were you the one making that call, or was it more of a group decision?" },
-          { role: "candidate", text: "Honestly it landed as a group decision. In hindsight I think I should have just made it — the data was clear." },
-          { role: "interviewer", text: "Fair. What about a project that didn't go well? What did you learn?" },
-          { role: "candidate", text: "We shipped a notifications redesign that nobody asked for — engagement dipped 4% week one. I should have had a smaller pilot before the full rollout. Now I always run a 10% cohort first." },
-          { role: "interviewer", text: "How do you work with engineering when timelines slip?" },
-          { role: "candidate", text: "I try to be in the room early, not after the fact. We have a weekly sync where eng surfaces risks, and I rebalance scope before it hits a deadline. Open and frequent — that's what works." },
-          { role: "interviewer", text: "Last one — why are you interested in this role specifically?" },
-          { role: "candidate", text: "Honestly, the team. I've used your product for two years and the craft level is rare. And the role is sized for someone who wants to own a surface end-to-end, which is what I'm looking for next." },
-          { role: "interviewer", text: "That's great to hear. Alright, that's all I had — do you have any questions for me?" },
-          { role: "candidate", text: "Just one — what's the biggest thing the next person on the team will be expected to figure out in the first 90 days?" },
-          { role: "interviewer", text: "Good question. Short answer: the design system is in flight and they'll inherit it mid-build. The hiring manager can give you the long version next round." },
-        ],
-        feedback: SAMPLE_FEEDBACK,
-        proposedMemories: [
-          { id: "pm_seed_1", text: "HR screening · Northwind: held the narrative in opening, lost the landing on questions 3 and 5. Lean on a number or decision to close.", state: "pending" },
-          { id: "pm_seed_2", text: "Setup-to-payoff ratio averaged ~38%. Target 15–20% setup before getting to the action.", state: "pending" },
-        ],
-      },
-    ],
-  };
-}
+const EMPTY_STORE: Store = {
+  activeProfileId: "",
+  profiles: [],
+  jobs: [],
+  interviews: [],
+};
 
 // ===========================================================================
 //  MARKDOWN RENDERER
@@ -455,30 +328,49 @@ const BAR_INTERVAL = 60;
 // ===========================================================================
 export default function InterviewPage() {
   // --- Persistent store ---
-  const [store, setStore] = useState<Store>(() => buildDefaultStore());
+  const [store, setStore] = useState<Store>(EMPTY_STORE);
   const [hydrated, setHydrated] = useState(false);
   const storeRef = useRef(store);
   storeRef.current = store;
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Store;
-        if (parsed && parsed.profiles && parsed.jobs && parsed.interviews) {
-          setStore(parsed);
+    let cancelled = false;
+    (async () => {
+      try {
+        const [profiles, jobs, interviews] = await Promise.all([
+          listProfiles(),
+          listJobs(),
+          listInterviews(),
+        ]);
+        if (cancelled) return;
+        let activeProfileId = "";
+        try {
+          const stored = localStorage.getItem(ACTIVE_PROFILE_KEY);
+          if (stored && profiles.some((p) => p.id === stored)) {
+            activeProfileId = stored;
+          }
+        } catch {}
+        if (!activeProfileId && profiles.length > 0) {
+          activeProfileId = profiles[0].id;
         }
+        setStore({ activeProfileId, profiles, jobs, interviews });
+      } catch (err) {
+        console.error("[interview] hydrate failed:", err);
+      } finally {
+        if (!cancelled) setHydrated(true);
       }
-    } catch {}
-    setHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !store.activeProfileId) return;
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(store));
+      localStorage.setItem(ACTIVE_PROFILE_KEY, store.activeProfileId);
     } catch {}
-  }, [store, hydrated]);
+  }, [store.activeProfileId, hydrated]);
 
   // --- Nav ---
   const [pane, setPane] = useState<Pane>("interviews");
@@ -957,6 +849,36 @@ export default function InterviewPage() {
       interviews: [ivRecord, ...prev.interviews],
     }));
     setViewingInterview(ivRecord);
+    // Persist with empty feedback/memories. The patches below await this
+    // promise so they target the DB-assigned UUID, not the local id.
+    const createdInterviewPromise: Promise<InterviewRecord | null> =
+      createInterview({
+        profileId: ivRecord.profileId,
+        jobId: ivRecord.jobId,
+        type: ivRecord.type,
+        title: ivRecord.title,
+        notes: ivRecord.notes,
+        status: ivRecord.status,
+        durationMs: ivRecord.durationMs,
+        questions: ivRecord.questions,
+        transcript: ivRecord.transcript,
+        feedback: null,
+        proposedMemories: null,
+      })
+        .then((row) => {
+          setStore((prev) => ({
+            ...prev,
+            interviews: prev.interviews.map((x) =>
+              x.id === ivRecord.id ? row : x
+            ),
+          }));
+          setViewingInterview(row);
+          return row;
+        })
+        .catch((err) => {
+          console.error("[interview] persist new interview failed:", err);
+          return null;
+        });
     setTranscriptOpen(false);
     setFeedbackMd(null);
     setFeedbackStatus("Generating…");
@@ -971,16 +893,23 @@ export default function InterviewPage() {
       `Collaboration framing reads strong when partner teams are named by role. Keep the "I made the call" frame for prioritization stories.`,
     ];
 
-    setTimeout(() => {
+    setTimeout(async () => {
       setFeedbackMd(SAMPLE_FEEDBACK);
       setFeedbackStatus("Ready");
-      // persist feedback
+      const persisted = await createdInterviewPromise;
+      const targetId = persisted?.id ?? ivRecord.id;
       setStore((prev) => ({
         ...prev,
         interviews: prev.interviews.map((x) =>
-          x.id === ivRecord.id ? { ...x, feedback: SAMPLE_FEEDBACK } : x
+          x.id === targetId ? { ...x, feedback: SAMPLE_FEEDBACK } : x
         ),
       }));
+      if (persisted) {
+        updateInterview(persisted.id, { feedback: SAMPLE_FEEDBACK }).catch(
+          (err) =>
+            console.error("[interview] persist feedback failed:", err)
+        );
+      }
       setMemoriesWaiting(false);
       setMemoriesStatus("Drafting…");
       const all: ProposedMemory[] = [];
@@ -993,16 +922,25 @@ export default function InterviewPage() {
           };
           all.push(pm);
           setProposedMemories((prev) => [...prev, pm]);
+          const snapshot = all.slice();
           setStore((prev) => ({
             ...prev,
             interviews: prev.interviews.map((x) =>
-              x.id === ivRecord.id
-                ? { ...x, proposedMemories: all.slice() }
-                : x
+              x.id === targetId ? { ...x, proposedMemories: snapshot } : x
             ),
           }));
           if (i === proposedTexts.length - 1) {
             setMemoriesStatus(`${proposedTexts.length} proposed`);
+            if (persisted) {
+              updateInterview(persisted.id, {
+                proposedMemories: snapshot,
+              }).catch((err) =>
+                console.error(
+                  "[interview] persist proposedMemories failed:",
+                  err
+                )
+              );
+            }
           }
         }, 600 + i * 700);
       });
@@ -1032,40 +970,49 @@ export default function InterviewPage() {
   const handleAcceptMemory = useCallback(
     (pm: ProposedMemory) => {
       if (!viewingInterview) return;
-      setStore((prev) => {
-        const profileId =
-          viewingInterview.profileId || prev.activeProfileId;
-        const profile = prev.profiles.find((p) => p.id === profileId);
-        if (!profile) return prev;
-        const memId =
-          "m_" +
-          Date.now().toString(36) +
-          Math.random().toString(36).slice(2, 5);
-        const newMem: Memory = {
-          id: memId,
-          text: pm.text,
-          createdAt: Date.now(),
-        };
-        return {
-          ...prev,
-          profiles: prev.profiles.map((p) =>
-            p.id === profile.id
-              ? { ...p, memories: [newMem, ...(p.memories || [])] }
-              : p
-          ),
-          interviews: prev.interviews.map((x) =>
-            x.id === viewingInterview.id
-              ? {
-                  ...x,
-                  proposedMemories: (x.proposedMemories || []).map((y) =>
-                    y.id === pm.id ? { ...y, state: "accepted", memId } : y
-                  ),
-                }
-              : x
-          ),
-        };
-      });
+      const profileId =
+        viewingInterview.profileId || storeRef.current.activeProfileId;
+      const profile = storeRef.current.profiles.find((p) => p.id === profileId);
+      if (!profile) return;
+
+      const memId =
+        "m_" +
+        Date.now().toString(36) +
+        Math.random().toString(36).slice(2, 5);
+      const newMem: Memory = {
+        id: memId,
+        text: pm.text,
+        createdAt: Date.now(),
+      };
+      const updatedMemories = [newMem, ...(profile.memories || [])];
+      const interviewRow = storeRef.current.interviews.find(
+        (x) => x.id === viewingInterview.id
+      );
+      const updatedProposed = (interviewRow?.proposedMemories || []).map((y) =>
+        y.id === pm.id ? { ...y, state: "accepted" as const, memId } : y
+      );
+
+      setStore((prev) => ({
+        ...prev,
+        profiles: prev.profiles.map((p) =>
+          p.id === profile.id ? { ...p, memories: updatedMemories } : p
+        ),
+        interviews: prev.interviews.map((x) =>
+          x.id === viewingInterview.id
+            ? { ...x, proposedMemories: updatedProposed }
+            : x
+        ),
+      }));
       setProposedMemories((prev) => prev.filter((p) => p.id !== pm.id));
+
+      Promise.all([
+        apiUpdateProfile(profile.id, { memories: updatedMemories }),
+        updateInterview(viewingInterview.id, {
+          proposedMemories: updatedProposed,
+        }),
+      ]).catch((err) =>
+        console.error("[interview] persist memory accept failed:", err)
+      );
     },
     [viewingInterview]
   );
@@ -1073,20 +1020,28 @@ export default function InterviewPage() {
   const handleRejectMemory = useCallback(
     (pm: ProposedMemory) => {
       if (!viewingInterview) return;
+      const interviewRow = storeRef.current.interviews.find(
+        (x) => x.id === viewingInterview.id
+      );
+      const updatedProposed = (interviewRow?.proposedMemories || []).map((y) =>
+        y.id === pm.id ? { ...y, state: "rejected" as const } : y
+      );
+
       setStore((prev) => ({
         ...prev,
         interviews: prev.interviews.map((x) =>
           x.id === viewingInterview.id
-            ? {
-                ...x,
-                proposedMemories: (x.proposedMemories || []).map((y) =>
-                  y.id === pm.id ? { ...y, state: "rejected" } : y
-                ),
-              }
+            ? { ...x, proposedMemories: updatedProposed }
             : x
         ),
       }));
       setProposedMemories((prev) => prev.filter((p) => p.id !== pm.id));
+
+      updateInterview(viewingInterview.id, {
+        proposedMemories: updatedProposed,
+      }).catch((err) =>
+        console.error("[interview] persist memory reject failed:", err)
+      );
     },
     [viewingInterview]
   );
@@ -1106,73 +1061,198 @@ export default function InterviewPage() {
   // -----------------------------------------------------------------
   //  Job actions
   // -----------------------------------------------------------------
+  // Inline name-prompt modal state (replaces window.prompt for add profile / add job)
+  const [namePrompt, setNamePrompt] = useState<
+    null | { kind: "profile" | "job" }
+  >(null);
+
   const addJob = useCallback(() => {
-    const company = (window.prompt("Company name?") || "").trim();
-    if (!company) return;
-    const role = (window.prompt("Role title?") || "").trim();
-    if (!role) return;
-    const id = "job_" + Date.now().toString(36);
-    const job: Job = {
-      id,
-      company,
-      role,
-      url: "",
-      posting: "",
-      research: "",
-      createdAt: Date.now(),
-    };
-    setStore((prev) => ({ ...prev, jobs: [job, ...prev.jobs] }));
-    setEditingJobId(id);
-  }, []);
-
-  const deleteJob = useCallback((id: string) => {
-    if (
-      !window.confirm(
-        "Delete this job? Past interviews tied to it will lose their reference."
-      )
-    )
+    const profileId = storeRef.current.activeProfileId;
+    if (!profileId) {
+      void showAlert(
+        "Create a profile first",
+        "You need an active profile before adding a job."
+      );
       return;
-    setStore((prev) => ({
-      ...prev,
-      jobs: prev.jobs.filter((j) => j.id !== id),
-    }));
-    setEditingJobId(null);
+    }
+    setNamePrompt({ kind: "job" });
   }, []);
 
-  const updateJob = useCallback((id: string, patch: Partial<Job>) => {
+  const submitNewJob = useCallback(
+    async (values: Record<string, string>) => {
+      const profileId = storeRef.current.activeProfileId;
+      if (!profileId) return;
+      try {
+        const created = await createJob({
+          profileId,
+          company: values.company,
+          role: values.role,
+          url: "",
+          posting: "",
+          research: "",
+        });
+        setStore((prev) => ({ ...prev, jobs: [created, ...prev.jobs] }));
+        setEditingJobId(created.id);
+        setNamePrompt(null);
+      } catch (err) {
+        void showAlert(
+          "Could not create job",
+          err instanceof Error ? err.message : "Unknown error"
+        );
+      }
+    },
+    []
+  );
+
+  const deleteJob = useCallback(async (id: string) => {
+    const ok = await askConfirm({
+      title: "Delete this job?",
+      message: "Any past interviews tied to it will also be deleted.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await apiDeleteJob(id);
+      setStore((prev) => ({
+        ...prev,
+        jobs: prev.jobs.filter((j) => j.id !== id),
+        interviews: prev.interviews.filter((iv) => iv.jobId !== id),
+      }));
+      setEditingJobId(null);
+    } catch (err) {
+      void showAlert(
+        "Could not delete job",
+        err instanceof Error ? err.message : "Unknown error"
+      );
+    }
+  }, []);
+
+  const updateJob = useCallback(async (id: string, patch: Partial<Job>) => {
     setStore((prev) => ({
       ...prev,
       jobs: prev.jobs.map((j) => (j.id === id ? { ...j, ...patch } : j)),
     }));
+    try {
+      await apiUpdateJob(id, patch);
+    } catch (err) {
+      console.error("[interview] updateJob failed:", err);
+      try {
+        const fresh = await listJobs();
+        setStore((prev) => ({ ...prev, jobs: fresh }));
+      } catch {}
+    }
   }, []);
 
   // -----------------------------------------------------------------
   //  Profile actions
   // -----------------------------------------------------------------
   const addProfile = useCallback(() => {
-    const name = (window.prompt("Profile name?") || "").trim();
-    if (!name) return;
-    const id = "p_" + Date.now().toString(36);
-    const profile: Profile = {
-      id,
-      name,
-      resume: null,
-      createdAt: Date.now(),
-      memories: [],
-    };
-    setStore((prev) => ({ ...prev, profiles: [profile, ...prev.profiles] }));
-    setEditingProfileId(id);
+    setNamePrompt({ kind: "profile" });
   }, []);
 
-  const updateProfile = useCallback((id: string, patch: Partial<Profile>) => {
-    setStore((prev) => ({
-      ...prev,
-      profiles: prev.profiles.map((p) => (p.id === id ? { ...p, ...patch } : p)),
-    }));
-  }, []);
+  const submitNewProfile = useCallback(
+    async (values: Record<string, string>) => {
+      try {
+        const created = await createProfile({
+          name: values.name,
+          memories: [],
+        });
+        setStore((prev) => ({
+          ...prev,
+          profiles: [created, ...prev.profiles],
+          activeProfileId: prev.activeProfileId || created.id,
+        }));
+        setEditingProfileId(created.id);
+        setNamePrompt(null);
+      } catch (err) {
+        void showAlert(
+          "Could not create profile",
+          err instanceof Error ? err.message : "Unknown error"
+        );
+      }
+    },
+    []
+  );
+
+  const updateProfile = useCallback(
+    async (id: string, patch: Partial<Profile>) => {
+      setStore((prev) => ({
+        ...prev,
+        profiles: prev.profiles.map((p) =>
+          p.id === id ? { ...p, ...patch } : p
+        ),
+      }));
+      try {
+        await apiUpdateProfile(id, patch);
+      } catch (err) {
+        console.error("[interview] updateProfile failed:", err);
+        try {
+          const fresh = await listProfiles();
+          setStore((prev) => ({ ...prev, profiles: fresh }));
+        } catch {}
+      }
+    },
+    []
+  );
 
   const setActiveProfile = useCallback((id: string) => {
     setStore((prev) => ({ ...prev, activeProfileId: id }));
+  }, []);
+
+  const deleteProfile = useCallback(async (id: string) => {
+    const ok = await askConfirm({
+      title: "Delete this profile?",
+      message:
+        "Its jobs, interviews, and résumé will also be deleted. This can't be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await apiDeleteProfile(id);
+      setStore((prev) => {
+        const profiles = prev.profiles.filter((p) => p.id !== id);
+        const jobs = prev.jobs.filter((j) => j.profileId !== id);
+        const interviews = prev.interviews.filter((iv) => iv.profileId !== id);
+        let activeProfileId = prev.activeProfileId;
+        if (activeProfileId === id) {
+          activeProfileId = profiles[0]?.id ?? "";
+        }
+        return { activeProfileId, profiles, jobs, interviews };
+      });
+      setEditingProfileId(null);
+    } catch (err) {
+      void showAlert(
+        "Could not delete profile",
+        err instanceof Error ? err.message : "Unknown error"
+      );
+    }
+  }, []);
+
+  const deleteInterview = useCallback(async (id: string) => {
+    const ok = await askConfirm({
+      title: "Delete this interview?",
+      message: "The transcript and feedback will be removed.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await apiDeleteInterview(id);
+      setStore((prev) => ({
+        ...prev,
+        interviews: prev.interviews.filter((iv) => iv.id !== id),
+      }));
+      setOverlay(null);
+      setViewingInterview(null);
+      setMessages([]);
+    } catch (err) {
+      void showAlert(
+        "Could not delete interview",
+        err instanceof Error ? err.message : "Unknown error"
+      );
+    }
   }, []);
 
   // ===========================================================================
@@ -1230,50 +1310,77 @@ export default function InterviewPage() {
 
         {/* MAIN */}
         <main className="main">
-          {pane === "interviews" && (
-            <InterviewsPane
-              store={store}
-              onNewInterview={() => openModal()}
-              onOpenInterview={openPastInterview}
-            />
+          {hydrated && store.profiles.length === 0 ? (
+            <section className="empty-state">
+              <h2>Welcome</h2>
+              <p>Create your first profile to get started.</p>
+              <button className="btn-primary" onClick={addProfile}>
+                Create profile
+              </button>
+            </section>
+          ) : (
+            <>
+              {pane === "interviews" && (
+                <InterviewsPane
+                  store={store}
+                  onNewInterview={() => openModal()}
+                  onOpenInterview={openPastInterview}
+                />
+              )}
+              {pane === "jobs" &&
+                (editingJobId ? (
+                  <JobDetail
+                    key={editingJobId}
+                    jobId={editingJobId}
+                    store={store}
+                    onBack={() => setEditingJobId(null)}
+                    onUpdate={updateJob}
+                    onDelete={deleteJob}
+                    onStartInterview={(jid) => openModal(jid)}
+                  />
+                ) : (
+                  <JobsList
+                    store={store}
+                    onOpen={(id) => setEditingJobId(id)}
+                    onAdd={addJob}
+                  />
+                ))}
+              {pane === "profile" &&
+                (editingProfileId ? (
+                  <ProfileDetail
+                    key={editingProfileId}
+                    profileId={editingProfileId}
+                    store={store}
+                    onBack={() => setEditingProfileId(null)}
+                    onUpdate={updateProfile}
+                    onSetActive={setActiveProfile}
+                    onDelete={deleteProfile}
+                  />
+                ) : (
+                  <ProfilesList
+                    store={store}
+                    onOpen={(id) => setEditingProfileId(id)}
+                    onAdd={addProfile}
+                  />
+                ))}
+            </>
           )}
-          {pane === "jobs" &&
-            (editingJobId ? (
-              <JobDetail
-                key={editingJobId}
-                jobId={editingJobId}
-                store={store}
-                onBack={() => setEditingJobId(null)}
-                onUpdate={updateJob}
-                onDelete={deleteJob}
-                onStartInterview={(jid) => openModal(jid)}
-              />
-            ) : (
-              <JobsList
-                store={store}
-                onOpen={(id) => setEditingJobId(id)}
-                onAdd={addJob}
-              />
-            ))}
-          {pane === "profile" &&
-            (editingProfileId ? (
-              <ProfileDetail
-                key={editingProfileId}
-                profileId={editingProfileId}
-                store={store}
-                onBack={() => setEditingProfileId(null)}
-                onUpdate={updateProfile}
-                onSetActive={setActiveProfile}
-              />
-            ) : (
-              <ProfilesList
-                store={store}
-                onOpen={(id) => setEditingProfileId(id)}
-                onAdd={addProfile}
-              />
-            ))}
         </main>
       </div>
+
+      {/* CONFIRM / ALERT MODAL HOST */}
+      <ConfirmModalHost />
+
+      {/* NAME PROMPT MODAL (add profile / add job) */}
+      {namePrompt && (
+        <NamePromptModal
+          kind={namePrompt.kind}
+          onCancel={() => setNamePrompt(null)}
+          onSubmit={
+            namePrompt.kind === "profile" ? submitNewProfile : submitNewJob
+          }
+        />
+      )}
 
       {/* MODAL */}
       {modalOpen && (
@@ -1356,19 +1463,20 @@ export default function InterviewPage() {
             <div className="stage-header">
               <button
                 className="stage-back"
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      "Exit interview? Progress will be lost."
-                    )
-                  ) {
-                    activeInterviewRef.current = null;
-                    setMessages([]);
-                    setComposeState("idle");
-                    setPreviewText("");
-                    cleanupAudio();
-                    setOverlay(null);
-                  }
+                onClick={async () => {
+                  const ok = await askConfirm({
+                    title: "Exit interview?",
+                    message: "Progress will be lost.",
+                    confirmLabel: "Exit",
+                    destructive: true,
+                  });
+                  if (!ok) return;
+                  activeInterviewRef.current = null;
+                  setMessages([]);
+                  setComposeState("idle");
+                  setPreviewText("");
+                  cleanupAudio();
+                  setOverlay(null);
                 }}
                 aria-label="Exit"
               >
@@ -1534,6 +1642,7 @@ export default function InterviewPage() {
           onToggleTranscript={() => setTranscriptOpen((v) => !v)}
           onAccept={handleAcceptMemory}
           onReject={handleRejectMemory}
+          onDelete={() => deleteInterview(viewingInterview.id)}
           onClose={() => {
             setOverlay(null);
             setViewingInterview(null);
@@ -1896,12 +2005,14 @@ function ProfileDetail({
   onBack,
   onUpdate,
   onSetActive,
+  onDelete,
 }: {
   profileId: string;
   store: Store;
   onBack: () => void;
   onUpdate: (id: string, patch: Partial<Profile>) => void;
   onSetActive: (id: string) => void;
+  onDelete: (id: string) => void;
 }) {
   const profile = store.profiles.find((p) => p.id === profileId);
   if (!profile) {
@@ -1913,19 +2024,56 @@ function ProfileDetail({
   }
   const isActive = profile.id === store.activeProfileId;
 
+  const [resumeBusy, setResumeBusy] = useState(false);
   const pickResume = () => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".pdf,.docx,.txt";
-    input.onchange = (e) => {
+    input.onchange = async (e) => {
       const f = (e.target as HTMLInputElement).files?.[0];
       if (!f) return;
-      const ext = (f.name.split(".").pop() || "").toLowerCase();
-      onUpdate(profileId, {
-        resume: { name: f.name, size: f.size, ext },
-      });
+      setResumeBusy(true);
+      try {
+        const updated = await uploadResume(profileId, f);
+        // Reflect server truth (storagePath, etc.) in the local store.
+        onUpdate(profileId, { resume: updated.resume });
+      } catch (err) {
+        void showAlert(
+          "Could not upload résumé",
+          err instanceof Error ? err.message : "Unknown error"
+        );
+      } finally {
+        setResumeBusy(false);
+      }
     };
     input.click();
+  };
+
+  const removeResume = async () => {
+    setResumeBusy(true);
+    try {
+      await deleteResume(profileId);
+      onUpdate(profileId, { resume: null });
+    } catch (err) {
+      void showAlert(
+        "Could not remove résumé",
+        err instanceof Error ? err.message : "Unknown error"
+      );
+    } finally {
+      setResumeBusy(false);
+    }
+  };
+
+  const openResume = async () => {
+    try {
+      const url = await getResumeSignedUrl(profileId);
+      window.open(url, "_blank", "noopener");
+    } catch (err) {
+      void showAlert(
+        "Could not open résumé",
+        err instanceof Error ? err.message : "Unknown error"
+      );
+    }
   };
 
   const addMemory = () => {
@@ -1977,6 +2125,13 @@ function ProfileDetail({
               Set active
             </button>
           )}
+          <button
+            className="btn btn-ghost"
+            onClick={() => onDelete(profile.id)}
+            style={{ color: "var(--danger, #d96666)" }}
+          >
+            Delete profile
+          </button>
         </div>
       </div>
 
@@ -2012,10 +2167,25 @@ function ProfileDetail({
             </div>
           </div>
           <div className="file-pill-actions">
+            {profile.resume?.storagePath && (
+              <button
+                className="icon-btn"
+                title="Open"
+                onClick={openResume}
+                disabled={resumeBusy}
+              >
+                <svg viewBox="0 0 24 24">
+                  <path d="M14 3h7v7" />
+                  <path d="M10 14L21 3" />
+                  <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
+                </svg>
+              </button>
+            )}
             <button
               className="icon-btn"
               title="Replace"
               onClick={pickResume}
+              disabled={resumeBusy}
             >
               <svg viewBox="0 0 24 24">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -2026,7 +2196,8 @@ function ProfileDetail({
             <button
               className="icon-btn"
               title="Remove"
-              onClick={() => onUpdate(profileId, { resume: null })}
+              onClick={removeResume}
+              disabled={resumeBusy}
             >
               <svg viewBox="0 0 24 24">
                 <path d="M18 6L6 18M6 6l12 12" />
@@ -2044,6 +2215,7 @@ function ProfileDetail({
             borderStyle: "dashed",
           }}
           onClick={pickResume}
+          disabled={resumeBusy}
         >
           <svg
             viewBox="0 0 24 24"
@@ -2057,7 +2229,7 @@ function ProfileDetail({
             <polyline points="17 8 12 3 7 8" />
             <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
-          Upload résumé (PDF, .docx, .txt)
+          {resumeBusy ? "Uploading…" : "Upload résumé (PDF, .docx, .txt)"}
         </button>
       )}
 
@@ -2525,6 +2697,7 @@ function SummaryOverlay({
   onToggleTranscript,
   onAccept,
   onReject,
+  onDelete,
   onClose,
 }: {
   interview: InterviewRecord;
@@ -2538,6 +2711,7 @@ function SummaryOverlay({
   onToggleTranscript: () => void;
   onAccept: (pm: ProposedMemory) => void;
   onReject: (pm: ProposedMemory) => void;
+  onDelete: () => void;
   onClose: () => void;
 }) {
   const job = store.jobs.find((j) => j.id === interview.jobId);
@@ -2569,7 +2743,13 @@ function SummaryOverlay({
             </svg>
             <span>Return to interviews</span>
           </button>
-          <div className="stage-meta" />
+          <button
+            className="btn btn-ghost"
+            onClick={onDelete}
+            style={{ color: "var(--danger, #d96666)" }}
+          >
+            Delete interview
+          </button>
         </div>
 
         <div className="summary-hero">
@@ -2707,6 +2887,209 @@ function SummaryOverlay({
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
+//  NAME PROMPT MODAL  (replaces window.prompt for add profile / add job)
+// ===========================================================================
+function NamePromptModal({
+  kind,
+  onCancel,
+  onSubmit,
+}: {
+  kind: "profile" | "job";
+  onCancel: () => void;
+  onSubmit: (values: Record<string, string>) => void;
+}) {
+  const config =
+    kind === "profile"
+      ? {
+          title: "New profile",
+          sub: "Profiles hold a résumé and memories.",
+          submitLabel: "Add profile",
+          fields: [
+            { name: "name", label: "Profile name", placeholder: "e.g. Robbie" },
+          ],
+        }
+      : {
+          title: "New job",
+          sub: "Add the company and role; you can fill in posting and research after.",
+          submitLabel: "Add job",
+          fields: [
+            { name: "company", label: "Company", placeholder: "e.g. Northwind" },
+            { name: "role", label: "Role", placeholder: "e.g. Senior Product Designer" },
+          ],
+        };
+
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(config.fields.map((f) => [f.name, ""]))
+  );
+  const trimmed = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(values).map(([k, v]) => [k, v.trim()])
+      ),
+    [values]
+  );
+  const allFilled = config.fields.every((f) => trimmed[f.name]);
+
+  const submit = () => {
+    if (!allFilled) return;
+    onSubmit(trimmed);
+  };
+
+  return (
+    <div
+      className="modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
+      <div className="modal" style={{ maxWidth: 460 }}>
+        <div className="modal-head">
+          <div>
+            <div className="modal-title">{config.title}</div>
+            <div className="modal-sub">{config.sub}</div>
+          </div>
+          <button
+            className="modal-close"
+            onClick={onCancel}
+            aria-label="Close"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        {config.fields.map((f, i) => (
+          <div key={f.name} className="modal-section">
+            <div className="modal-section-label">{f.label}</div>
+            <input
+              className="input"
+              autoFocus={i === 0}
+              value={values[f.name]}
+              placeholder={f.placeholder}
+              onChange={(e) =>
+                setValues((v) => ({ ...v, [f.name]: e.target.value }))
+              }
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submit();
+                if (e.key === "Escape") onCancel();
+              }}
+              style={{ width: "100%" }}
+            />
+          </div>
+        ))}
+
+        <div className="modal-foot">
+          <button className="btn btn-ghost" onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            className="btn btn-primary"
+            disabled={!allFilled}
+            onClick={submit}
+          >
+            {config.submitLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
+//  CONFIRM MODAL HOST  (handles askConfirm / showAlert)
+// ===========================================================================
+function ConfirmModalHost() {
+  const [active, setActive] = useState<ActiveDialog | null>(null);
+
+  useEffect(() => {
+    dialogDispatch = (req) => setActive(req);
+    return () => {
+      dialogDispatch = null;
+    };
+  }, []);
+
+  // Esc / Enter shortcuts and body-scroll lock while open.
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (!active.hideCancel) {
+          active.resolve(false);
+          setActive(null);
+        }
+      } else if (e.key === "Enter") {
+        active.resolve(true);
+        setActive(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [active]);
+
+  if (!active) return null;
+
+  const cancel = () => {
+    active.resolve(false);
+    setActive(null);
+  };
+  const confirm = () => {
+    active.resolve(true);
+    setActive(null);
+  };
+
+  return (
+    <div
+      className="modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !active.hideCancel) cancel();
+      }}
+    >
+      <div className="modal" style={{ maxWidth: 440 }}>
+        <div className="modal-head">
+          <div>
+            <div className="modal-title">{active.title}</div>
+            {active.message && (
+              <div className="modal-sub">{active.message}</div>
+            )}
+          </div>
+        </div>
+        <div className="modal-foot">
+          {!active.hideCancel ? (
+            <button className="btn btn-ghost" onClick={cancel}>
+              {active.cancelLabel ?? "Cancel"}
+            </button>
+          ) : (
+            <span />
+          )}
+          <button
+            className="btn btn-primary"
+            onClick={confirm}
+            autoFocus
+            style={
+              active.destructive
+                ? {
+                    background: "var(--danger, #d96666)",
+                    borderColor: "var(--danger, #d96666)",
+                    color: "#fff",
+                  }
+                : undefined
+            }
+          >
+            {active.confirmLabel ?? "OK"}
+          </button>
+        </div>
       </div>
     </div>
   );

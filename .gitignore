@@ -2,6 +2,12 @@
 node_modules/
 /Spotify Extended Streaming History/
 .claude/
+.playwright-mcp/
+.docs/
+docs/superpowers/plans/
+
+# stray Playwright screenshots at repo root
+/*.png
 
 # next.js
 .next/
