@@ -13,5 +13,13 @@ async def get_pool() -> asyncpg.Pool:
     if _pool is None:
         if not SUPABASE_DB_URL:
             raise RuntimeError("SUPABASE_DB_URL env var is not set")
-        _pool = await asyncpg.create_pool(SUPABASE_DB_URL, min_size=1, max_size=5)
+        # Supabase's pooler runs in transaction mode, which breaks asyncpg's
+        # default prepared-statement cache (DuplicatePreparedStatementError).
+        # Disabling the cache keeps queries simple and stateless.
+        _pool = await asyncpg.create_pool(
+            SUPABASE_DB_URL,
+            min_size=1,
+            max_size=5,
+            statement_cache_size=0,
+        )
     return _pool

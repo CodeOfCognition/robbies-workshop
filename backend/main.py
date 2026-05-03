@@ -11,11 +11,15 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Header, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import json as _json
 import openai
 from agents.spotify import explore_music
 from agents.toneboard import run_tone_chat
+from agents.interview.turn import run_turn as run_interview_turn
+from agents.interview.feedback import run_feedback as run_interview_feedback
+from agents.interview.memories import run_memories as run_interview_memories
 from db import get_pool
 
 logging.basicConfig(level=logging.INFO)
@@ -189,3 +193,52 @@ async def transcribe(audio_data: UploadFile = File(...)):
     except Exception as e:
         logger.error(f"Transcription failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class InterviewTurnRequest(BaseModel):
+    interview_id: str
+    user_message: str | None = None
+
+
+@app.post("/interview/turn", dependencies=[Depends(verify_api_key)])
+async def interview_turn(request: InterviewTurnRequest):
+    return StreamingResponse(
+        run_interview_turn(request.interview_id, request.user_message),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-store",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+class InterviewFeedbackRequest(BaseModel):
+    interview_id: str
+
+
+@app.post("/interview/feedback", dependencies=[Depends(verify_api_key)])
+async def interview_feedback(request: InterviewFeedbackRequest):
+    return StreamingResponse(
+        run_interview_feedback(request.interview_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-store",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+class InterviewMemoriesRequest(BaseModel):
+    interview_id: str
+
+
+@app.post("/interview/memories", dependencies=[Depends(verify_api_key)])
+async def interview_memories(request: InterviewMemoriesRequest):
+    return StreamingResponse(
+        run_interview_memories(request.interview_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-store",
+            "X-Accel-Buffering": "no",
+        },
+    )

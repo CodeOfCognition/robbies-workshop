@@ -26,6 +26,9 @@ export interface ProposedMemory {
   text: string;
   state: "pending" | "accepted" | "rejected";
   memId?: string;
+  // When set, accepting this proposal replaces the existing memory with this
+  // id (rather than just adding a new one).
+  replacesId?: string;
 }
 
 export type InterviewType = "hr" | "hm" | "other";

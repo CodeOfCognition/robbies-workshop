@@ -34,6 +34,11 @@ import {
   updateInterview,
   deleteInterview as apiDeleteInterview,
 } from "@/lib/interview-store";
+import {
+  streamTurn,
+  streamFeedback,
+  streamMemories,
+} from "@/lib/interview-agent-client";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 const BACKEND_API_KEY = process.env.NEXT_PUBLIC_WORKSHOP_BACKEND_API_KEY;
@@ -100,20 +105,12 @@ interface ChatMessage {
   who: "ai" | "user";
   text: string;
   typing?: boolean;
+  streaming?: boolean;
 }
 
 // ===========================================================================
 //  CONSTANTS / SEED DATA
 // ===========================================================================
-const QUESTIONS = [
-  "Let’s start easy — walk me through the last project you shipped that you’re proud of, and what your specific contribution was.",
-  "Tell me about a time priorities collided across teams and how you resolved it.",
-  "What’s a piece of feedback you received in the last year that genuinely changed how you work?",
-  "Walk me through how you’d approach the first 30 days in this role.",
-  "When you think about senior people you’ve admired, what separated them from the merely competent?",
-  "Last one — what’s a question you haven’t been asked in an interview that you wish you were?",
-];
-
 const PREP_STEPS = [
   "Reading your résumé",
   "Reviewing job + research",
@@ -127,24 +124,6 @@ const TYPE_LABELS: Record<InterviewType, string> = {
   hm: "Hiring manager",
   other: "Other",
 };
-
-const SAMPLE_FEEDBACK = `Overall, this read as a **mid-confidence** round. You opened cleanly and held a clear narrative for the first three answers, then started losing the landing as the questions got harder. The interviewer would walk away remembering your specifics — not your conclusions.
-
-## What worked
-
-- **Anchored the opening in a real project.** First answer named a system, a team size, and a constraint. That bought trust for the next two answers to also be specific.
-- **Collaboration signal was clean.** You named four partner teams by role, not title — reads as someone who actually shipped with them, not someone who's reciting an org chart.
-- **Voice settled around minute four.** Hedges dropped, sentences tightened. That version of you should show up sooner.
-
-## What to sharpen
-
-- **Land the outcome.** Two answers ended on activity ("we ran research, we shipped a prototype") instead of result. Close on a number, a decision, or a changed behavior — even one is enough.
-- **Shorten the setup.** Your average answer spent ~38% on context before getting to the action. Aim for 15–20%. You can trust the interviewer to ask follow-ups if they need more background.
-- **One "I made the call" story is missing.** Your prioritization example slid into "we discussed and aligned." For HM rounds especially, they need to hear you owning a decision that wasn't unanimous.
-
-## Net read
-
-Strong specificity, soft endings. Fix the closes and this is a confident round.`;
 
 const EMPTY_STORE: Store = {
   activeProfileId: "",
@@ -435,11 +414,16 @@ export default function InterviewPage() {
     startedAt: number;
     transcript: TranscriptMsg[];
     qIdx: number;
+    persisted: boolean;
   } | null>(null);
+  const turnAbortRef = useRef<AbortController | null>(null);
+  const feedbackAbortRef = useRef<AbortController | null>(null);
+  const memoriesAbortRef = useRef<AbortController | null>(null);
 
   const [chatRole, setChatRole] = useState("—");
   const [chatCompany, setChatCompany] = useState("—");
   const [qIdx, setQIdx] = useState(0);
+  const [agentBusy, setAgentBusy] = useState(false);
 
   // --- Prep ---
   const [prepStates, setPrepStates] = useState<("idle" | "active" | "done")[]>(
@@ -484,13 +468,13 @@ export default function InterviewPage() {
   // -----------------------------------------------------------------
   //  Modal start
   // -----------------------------------------------------------------
-  const startInterview = useCallback(() => {
+  const startInterview = useCallback(async () => {
     if (!modalJobId || !modalProfileId) return;
     const job = store.jobs.find((j) => j.id === modalJobId);
     if (!job) return;
-    const id = "iv_" + Date.now().toString(36);
+    const tempId = "iv_" + Date.now().toString(36);
     activeInterviewRef.current = {
-      id,
+      id: tempId,
       jobId: modalJobId,
       profileId: modalProfileId,
       type: modalType,
@@ -498,6 +482,7 @@ export default function InterviewPage() {
       startedAt: Date.now(),
       transcript: [],
       qIdx: 0,
+      persisted: false,
     };
     setChatRole(job.role || "Role");
     setChatCompany(`${job.company || "Company"} · ${TYPE_LABELS[modalType]}`);
@@ -505,7 +490,139 @@ export default function InterviewPage() {
     setQIdx(0);
     setModalOpen(false);
     setOverlay("prep");
-  }, [modalJobId, modalProfileId, modalType, modalNotes, store.jobs]);
+
+    // Persist a real interview row up front so the backend has a UUID to
+    // attach the system prompt and transcript to. We mark it in_progress
+    // and rely on the End flow to flip to "done".
+    let persistedId: string | null = null;
+    try {
+      const persisted = await createInterview({
+        profileId: modalProfileId,
+        jobId: modalJobId,
+        type: modalType,
+        title: TYPE_LABELS[modalType],
+        notes: modalNotes,
+        status: "in_progress",
+        durationMs: 0,
+        questions: 0,
+        transcript: [],
+        feedback: null,
+        proposedMemories: null,
+      });
+      persistedId = persisted.id;
+      const cur = activeInterviewRef.current;
+      if (cur && cur.id === tempId) {
+        cur.id = persisted.id;
+        cur.persisted = true;
+      }
+      setStore((prev) => ({
+        ...prev,
+        interviews: [persisted, ...prev.interviews],
+      }));
+    } catch (err) {
+      console.error("[interview] persist new interview failed:", err);
+      await showAlert(
+        "Couldn't start interview",
+        "Failed to create the interview record. Check the connection and try again."
+      );
+      activeInterviewRef.current = null;
+      setOverlay(null);
+      return;
+    }
+
+    // Kick off the first agent turn (no user message — backend prepends the
+    // synthetic "begin interview" trigger). We stay in the prep overlay
+    // until the first delta lands, then flip to chat with a streaming bubble.
+    const ac = new AbortController();
+    turnAbortRef.current = ac;
+    setAgentBusy(true);
+    let firstDeltaSeen = false;
+
+    void streamTurn({
+      interviewId: persistedId,
+      signal: ac.signal,
+      onToolUse: () => {
+        // Tool calls happen during research; the prep animation covers it.
+      },
+      onDelta: (chunk) => {
+        if (!firstDeltaSeen) {
+          firstDeltaSeen = true;
+          setOverlay("chat");
+          setMessages((prev) => [
+            ...prev,
+            { who: "ai", text: chunk, streaming: true },
+          ]);
+          setTimeout(() => {
+            chatOverlayRef.current?.scrollTo({
+              top: chatOverlayRef.current.scrollHeight,
+              behavior: "smooth",
+            });
+          }, 50);
+          return;
+        }
+        setMessages((prev) => {
+          const next = [...prev];
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].who === "ai" && next[i].streaming) {
+              next[i] = { ...next[i], text: next[i].text + chunk };
+              break;
+            }
+          }
+          return next;
+        });
+        setTimeout(() => {
+          chatOverlayRef.current?.scrollTo({
+            top: chatOverlayRef.current.scrollHeight,
+            behavior: "smooth",
+          });
+        }, 50);
+      },
+      onDone: (assistant) => {
+        setMessages((prev) => {
+          const next = [...prev];
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].who === "ai" && next[i].streaming) {
+              next[i] = { who: "ai", text: assistant.text };
+              break;
+            }
+          }
+          return next;
+        });
+        const iv = activeInterviewRef.current;
+        if (iv) {
+          iv.transcript.push({ role: "interviewer", text: assistant.text });
+          iv.qIdx = iv.qIdx + 1;
+        }
+        setQIdx((q) => q + 1);
+        setAgentBusy(false);
+        turnAbortRef.current = null;
+      },
+      onError: async (msg) => {
+        setAgentBusy(false);
+        turnAbortRef.current = null;
+        // If the first turn failed before chat opened, the prep overlay has
+        // no exit affordance — bail out and mark the orphan row abandoned.
+        if (!firstDeltaSeen) {
+          const orphanId = activeInterviewRef.current?.id;
+          activeInterviewRef.current = null;
+          setOverlay(null);
+          if (orphanId) {
+            void updateInterview(orphanId, { status: "abandoned" }).catch(
+              (err) =>
+                console.error("[interview] mark abandoned failed:", err)
+            );
+          }
+        }
+        await showAlert("Couldn't start interview", msg);
+      },
+    });
+  }, [
+    modalJobId,
+    modalProfileId,
+    modalType,
+    modalNotes,
+    store.jobs,
+  ]);
 
   // -----------------------------------------------------------------
   //  Prep animation
@@ -520,14 +637,17 @@ export default function InterviewPage() {
       next[0] = "active";
       return next;
     });
+    // Animation runs through the steps as visual reassurance while the
+    // agent is doing real work in the background. Final step stays "active"
+    // until the first agent delta arrives (which is what flips us to chat).
     prepTimerRef.current = setInterval(() => {
       i++;
       setPrepStates((prev) => {
         const next = [...prev];
         if (i > 0 && i - 1 < next.length) next[i - 1] = "done";
-        if (i >= PREP_STEPS.length) {
+        if (i >= PREP_STEPS.length - 1) {
           if (prepTimerRef.current) clearInterval(prepTimerRef.current);
-          setTimeout(() => setOverlay("chat"), 400);
+          next[PREP_STEPS.length - 1] = "active";
           return next;
         }
         next[i] = "active";
@@ -549,46 +669,70 @@ export default function InterviewPage() {
     }, 50);
   }, []);
 
-  const addAIMessage = useCallback(
-    (text: string, onDone?: () => void) => {
-      setMessages((prev) => [...prev, { who: "ai", text, typing: true }]);
+  // Stream the next agent turn after a candidate message. The first turn is
+  // kicked off inside startInterview; subsequent turns flow through here.
+  const requestAgentTurn = useCallback(
+    (userMessage: string) => {
+      const iv = activeInterviewRef.current;
+      if (!iv || !iv.persisted) return;
+      if (turnAbortRef.current) {
+        turnAbortRef.current.abort();
+      }
+      const ac = new AbortController();
+      turnAbortRef.current = ac;
+      setAgentBusy(true);
+
+      // Start a streaming bubble immediately so the user sees the agent thinking.
+      setMessages((prev) => [...prev, { who: "ai", text: "", streaming: true }]);
       scrollChatBottom();
-      const delay = 700 + Math.min(text.length * 8, 1800);
-      setTimeout(() => {
-        setMessages((prev) =>
-          prev.map((m, i) =>
-            i === prev.length - 1 ? { ...m, typing: false } : m
-          )
-        );
-        scrollChatBottom();
-        onDone?.();
-      }, delay);
+
+      void streamTurn({
+        interviewId: iv.id,
+        userMessage,
+        signal: ac.signal,
+        onDelta: (chunk) => {
+          setMessages((prev) => {
+            const next = [...prev];
+            for (let i = next.length - 1; i >= 0; i--) {
+              if (next[i].who === "ai" && next[i].streaming) {
+                next[i] = { ...next[i], text: next[i].text + chunk };
+                break;
+              }
+            }
+            return next;
+          });
+          scrollChatBottom();
+        },
+        onDone: (assistant) => {
+          setMessages((prev) => {
+            const next = [...prev];
+            for (let i = next.length - 1; i >= 0; i--) {
+              if (next[i].who === "ai" && next[i].streaming) {
+                next[i] = { who: "ai", text: assistant.text };
+                break;
+              }
+            }
+            return next;
+          });
+          const cur = activeInterviewRef.current;
+          if (cur) {
+            cur.transcript.push({ role: "interviewer", text: assistant.text });
+            cur.qIdx = cur.qIdx + 1;
+          }
+          setQIdx((q) => q + 1);
+          setAgentBusy(false);
+          turnAbortRef.current = null;
+        },
+        onError: async (msg) => {
+          setMessages((prev) => prev.filter((m) => !m.streaming));
+          setAgentBusy(false);
+          turnAbortRef.current = null;
+          await showAlert("Interview agent error", msg);
+        },
+      });
     },
     [scrollChatBottom]
   );
-
-  const askNextRef = useRef<(() => void) | null>(null);
-  askNextRef.current = () => {
-    const iv = activeInterviewRef.current;
-    if (!iv) return;
-    if (iv.qIdx >= QUESTIONS.length) {
-      setTimeout(() => {
-        addAIMessage(
-          "That’s all I’ve got for you. Nice job — I’ll put a debrief together.",
-          () => setTimeout(goToSummary, 600)
-        );
-      }, 600);
-      return;
-    }
-    setQIdx(iv.qIdx + 1);
-    addAIMessage(QUESTIONS[iv.qIdx]);
-  };
-
-  useEffect(() => {
-    if (overlay === "chat" && messages.length === 0) {
-      setTimeout(() => askNextRef.current?.(), 300);
-    }
-  }, [overlay, messages.length]);
 
   // -----------------------------------------------------------------
   //  Recording / waveform / transcription
@@ -761,16 +905,15 @@ export default function InterviewPage() {
       return;
     }
     const iv = activeInterviewRef.current;
-    if (!iv) return;
+    if (!iv || !iv.persisted) return;
+    if (agentBusy) return;
     setMessages((prev) => [...prev, { who: "user", text }]);
-    iv.transcript.push({ role: "interviewer", text: QUESTIONS[iv.qIdx] });
     iv.transcript.push({ role: "candidate", text });
-    iv.qIdx++;
     setComposeState("idle");
     setPreviewText("");
     setComposeTimer("00:00");
-    setTimeout(() => askNextRef.current?.(), 900);
-  }, [previewText]);
+    requestAgentTurn(text);
+  }, [previewText, requestAgentTurn, agentBusy]);
 
   const handleDiscard = useCallback(() => {
     setComposeState("idle");
@@ -800,6 +943,18 @@ export default function InterviewPage() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (turnAbortRef.current) {
+        turnAbortRef.current.abort();
+        turnAbortRef.current = null;
+      }
+      if (feedbackAbortRef.current) {
+        feedbackAbortRef.current.abort();
+        feedbackAbortRef.current = null;
+      }
+      if (memoriesAbortRef.current) {
+        memoriesAbortRef.current.abort();
+        memoriesAbortRef.current = null;
+      }
       recognizingRef.current = false;
       cancelAnimationFrame(rafIdRef.current);
       if (mediaRecorderRef.current?.state === "recording") {
@@ -819,6 +974,83 @@ export default function InterviewPage() {
   // -----------------------------------------------------------------
   //  Summary
   // -----------------------------------------------------------------
+  const requestMemories = useCallback((interviewId: string) => {
+    if (memoriesAbortRef.current) {
+      memoriesAbortRef.current.abort();
+    }
+    const ac = new AbortController();
+    memoriesAbortRef.current = ac;
+    setProposedMemories([]);
+    setMemoriesWaiting(true);
+    setMemoriesStatus("Drafting…");
+
+    void streamMemories({
+      interviewId,
+      signal: ac.signal,
+      onDone: (proposals) => {
+        memoriesAbortRef.current = null;
+        setMemoriesWaiting(false);
+        const pending = proposals.filter((p) => p.state === "pending");
+        setProposedMemories(pending);
+        setMemoriesStatus(
+          pending.length === 0
+            ? "No proposals"
+            : `${pending.length} proposed`
+        );
+        setStore((prev) => ({
+          ...prev,
+          interviews: prev.interviews.map((x) =>
+            x.id === interviewId ? { ...x, proposedMemories: proposals } : x
+          ),
+        }));
+      },
+      onError: async (msg) => {
+        memoriesAbortRef.current = null;
+        setMemoriesWaiting(false);
+        setMemoriesStatus("Failed");
+        await showAlert("Memory agent error", msg);
+      },
+    });
+  }, []);
+
+  const requestFeedback = useCallback((interviewId: string) => {
+    if (feedbackAbortRef.current) {
+      feedbackAbortRef.current.abort();
+    }
+    const ac = new AbortController();
+    feedbackAbortRef.current = ac;
+    setFeedbackMd("");
+    setFeedbackStatus("Generating…");
+    let acc = "";
+
+    void streamFeedback({
+      interviewId,
+      signal: ac.signal,
+      onDelta: (chunk) => {
+        acc += chunk;
+        setFeedbackMd(acc);
+      },
+      onDone: (final) => {
+        const text = final || acc;
+        setFeedbackMd(text);
+        setFeedbackStatus("Ready");
+        feedbackAbortRef.current = null;
+        setStore((prev) => ({
+          ...prev,
+          interviews: prev.interviews.map((x) =>
+            x.id === interviewId ? { ...x, feedback: text } : x
+          ),
+        }));
+      },
+      onError: async (msg) => {
+        setFeedbackMd(null);
+        setFeedbackStatus("Failed");
+        feedbackAbortRef.current = null;
+        await showAlert("Feedback agent error", msg);
+      },
+    });
+  }, []);
+
   const goToSummary = useCallback(() => {
     const iv = activeInterviewRef.current;
     if (!iv) {
@@ -826,9 +1058,13 @@ export default function InterviewPage() {
       return;
     }
     const dur = Date.now() - iv.startedAt;
-    const job = storeRef.current.jobs.find((j) => j.id === iv.jobId);
     const typeLabel = TYPE_LABELS[iv.type];
 
+    // The interview row was already created at startInterview; the backend
+    // also persists transcript turns as they happen. We patch status,
+    // duration, and question count here, and use the existing local record
+    // (with whatever transcript we accumulated) for the summary view.
+    const localTranscript = iv.transcript.slice();
     const ivRecord: InterviewRecord = {
       id: iv.id,
       jobId: iv.jobId,
@@ -840,132 +1076,77 @@ export default function InterviewPage() {
       durationMs: dur,
       questions: iv.qIdx,
       status: "done",
-      transcript: iv.transcript.slice(),
+      transcript: localTranscript,
       feedback: null,
       proposedMemories: null,
     };
     setStore((prev) => ({
       ...prev,
-      interviews: [ivRecord, ...prev.interviews],
+      interviews: prev.interviews.map((x) =>
+        x.id === iv.id ? { ...x, ...ivRecord } : x
+      ),
     }));
     setViewingInterview(ivRecord);
-    // Persist with empty feedback/memories. The patches below await this
-    // promise so they target the DB-assigned UUID, not the local id.
-    const createdInterviewPromise: Promise<InterviewRecord | null> =
-      createInterview({
-        profileId: ivRecord.profileId,
-        jobId: ivRecord.jobId,
-        type: ivRecord.type,
-        title: ivRecord.title,
-        notes: ivRecord.notes,
-        status: ivRecord.status,
-        durationMs: ivRecord.durationMs,
-        questions: ivRecord.questions,
-        transcript: ivRecord.transcript,
-        feedback: null,
-        proposedMemories: null,
+
+    void updateInterview(iv.id, {
+      status: "done",
+      durationMs: dur,
+      questions: iv.qIdx,
+    })
+      .then((row) => {
+        setStore((prev) => ({
+          ...prev,
+          interviews: prev.interviews.map((x) => (x.id === row.id ? row : x)),
+        }));
+        setViewingInterview(row);
       })
-        .then((row) => {
-          setStore((prev) => ({
-            ...prev,
-            interviews: prev.interviews.map((x) =>
-              x.id === ivRecord.id ? row : x
-            ),
-          }));
-          setViewingInterview(row);
-          return row;
-        })
-        .catch((err) => {
-          console.error("[interview] persist new interview failed:", err);
-          return null;
-        });
-    setTranscriptOpen(false);
-    setFeedbackMd(null);
-    setFeedbackStatus("Generating…");
-    setMemoriesWaiting(true);
-    setMemoriesStatus("Pending");
-    setProposedMemories([]);
-    setOverlay("summary");
-
-    const proposedTexts = [
-      `${typeLabel}${job ? " · " + job.company : ""}: held the narrative in opening, lost the landing on questions 3 and 5. Lean on a number or decision to close.`,
-      `Setup-to-payoff ratio averaged ~38%. For ${job ? job.company : "next round"}, target 15–20% setup before getting to the action.`,
-      `Collaboration framing reads strong when partner teams are named by role. Keep the "I made the call" frame for prioritization stories.`,
-    ];
-
-    setTimeout(async () => {
-      setFeedbackMd(SAMPLE_FEEDBACK);
-      setFeedbackStatus("Ready");
-      const persisted = await createdInterviewPromise;
-      const targetId = persisted?.id ?? ivRecord.id;
-      setStore((prev) => ({
-        ...prev,
-        interviews: prev.interviews.map((x) =>
-          x.id === targetId ? { ...x, feedback: SAMPLE_FEEDBACK } : x
-        ),
-      }));
-      if (persisted) {
-        updateInterview(persisted.id, { feedback: SAMPLE_FEEDBACK }).catch(
-          (err) =>
-            console.error("[interview] persist feedback failed:", err)
-        );
-      }
-      setMemoriesWaiting(false);
-      setMemoriesStatus("Drafting…");
-      const all: ProposedMemory[] = [];
-      proposedTexts.forEach((text, i) => {
-        setTimeout(() => {
-          const pm: ProposedMemory = {
-            id: "pm_" + Date.now().toString(36) + i,
-            text,
-            state: "pending",
-          };
-          all.push(pm);
-          setProposedMemories((prev) => [...prev, pm]);
-          const snapshot = all.slice();
-          setStore((prev) => ({
-            ...prev,
-            interviews: prev.interviews.map((x) =>
-              x.id === targetId ? { ...x, proposedMemories: snapshot } : x
-            ),
-          }));
-          if (i === proposedTexts.length - 1) {
-            setMemoriesStatus(`${proposedTexts.length} proposed`);
-            if (persisted) {
-              updateInterview(persisted.id, {
-                proposedMemories: snapshot,
-              }).catch((err) =>
-                console.error(
-                  "[interview] persist proposedMemories failed:",
-                  err
-                )
-              );
-            }
-          }
-        }, 600 + i * 700);
+      .catch((err) => {
+        console.error("[interview] update on summary failed:", err);
       });
-    }, 1800);
+
+    setTranscriptOpen(false);
+    setOverlay("summary");
+    // Feedback + memory extraction run in parallel — both read the same
+    // transcript and persisted system_prompt.
+    requestFeedback(iv.id);
+    requestMemories(iv.id);
 
     activeInterviewRef.current = null;
-  }, []);
+  }, [requestFeedback, requestMemories]);
 
   const openPastInterview = useCallback((ivId: string) => {
     const iv = storeRef.current.interviews.find((x) => x.id === ivId);
     if (!iv) return;
     setViewingInterview(iv);
     setTranscriptOpen(false);
-    setFeedbackMd(iv.feedback);
-    setFeedbackStatus(iv.feedback ? "Ready" : "");
-    const pendingPMs = (iv.proposedMemories || []).filter(
-      (p) => p.state === "pending"
-    );
-    setProposedMemories(pendingPMs);
-    setMemoriesWaiting(false);
-    setMemoriesStatus(
-      pendingPMs.length > 0 ? `${pendingPMs.length} pending` : ""
-    );
+    const hasTranscript = (iv.transcript || []).length > 0;
+    if (iv.feedback) {
+      setFeedbackMd(iv.feedback);
+      setFeedbackStatus("Ready");
+    } else if (hasTranscript) {
+      requestFeedback(iv.id);
+    } else {
+      setFeedbackMd(null);
+      setFeedbackStatus("");
+    }
+    if (iv.proposedMemories === null && hasTranscript) {
+      requestMemories(iv.id);
+    } else {
+      const pms = iv.proposedMemories || [];
+      const pendingPMs = pms.filter((p) => p.state === "pending");
+      setProposedMemories(pendingPMs);
+      setMemoriesWaiting(false);
+      if (pendingPMs.length > 0) {
+        setMemoriesStatus(`${pendingPMs.length} pending`);
+      } else if (pms.length === 0 && hasTranscript) {
+        // Agent ran and found nothing worth proposing.
+        setMemoriesStatus("No proposals");
+      } else {
+        setMemoriesStatus("");
+      }
+    }
     setOverlay("summary");
-  }, []);
+  }, [requestFeedback, requestMemories]);
 
   const handleAcceptMemory = useCallback(
     (pm: ProposedMemory) => {
@@ -984,7 +1165,12 @@ export default function InterviewPage() {
         text: pm.text,
         createdAt: Date.now(),
       };
-      const updatedMemories = [newMem, ...(profile.memories || [])];
+      // If this proposal is an update, drop the memory it replaces. The new
+      // memory is then prepended in its stead.
+      const baseMemories = pm.replacesId
+        ? (profile.memories || []).filter((m) => m.id !== pm.replacesId)
+        : profile.memories || [];
+      const updatedMemories = [newMem, ...baseMemories];
       const interviewRow = storeRef.current.interviews.find(
         (x) => x.id === viewingInterview.id
       );
@@ -1471,12 +1657,27 @@ export default function InterviewPage() {
                     destructive: true,
                   });
                   if (!ok) return;
+                  if (turnAbortRef.current) {
+                    turnAbortRef.current.abort();
+                    turnAbortRef.current = null;
+                  }
+                  const abandonedId = activeInterviewRef.current?.id;
+                  const wasPersisted =
+                    activeInterviewRef.current?.persisted ?? false;
                   activeInterviewRef.current = null;
                   setMessages([]);
                   setComposeState("idle");
                   setPreviewText("");
+                  setAgentBusy(false);
                   cleanupAudio();
                   setOverlay(null);
+                  if (abandonedId && wasPersisted) {
+                    void updateInterview(abandonedId, {
+                      status: "abandoned",
+                    }).catch((err) =>
+                      console.error("[interview] mark abandoned failed:", err)
+                    );
+                  }
                 }}
                 aria-label="Exit"
               >
@@ -1492,10 +1693,27 @@ export default function InterviewPage() {
                 <div className="stage-role">{chatRole}</div>
                 <div className="stage-company">{chatCompany}</div>
               </div>
-              <div className="stage-counter">
-                <b>{Math.min(qIdx + 1, QUESTIONS.length)}</b> /{" "}
-                {QUESTIONS.length}
-              </div>
+              <button
+                className="stage-end"
+                onClick={async () => {
+                  const ok = await askConfirm({
+                    title: "End interview?",
+                    message:
+                      "We'll wrap up the session and you can review the transcript.",
+                    confirmLabel: "End interview",
+                  });
+                  if (!ok) return;
+                  if (turnAbortRef.current) {
+                    turnAbortRef.current.abort();
+                    turnAbortRef.current = null;
+                  }
+                  setAgentBusy(false);
+                  goToSummary();
+                }}
+                disabled={agentBusy}
+              >
+                End
+              </button>
             </div>
 
             <div className="chat-log" ref={chatLogRef}>
@@ -2715,6 +2933,10 @@ function SummaryOverlay({
   onClose: () => void;
 }) {
   const job = store.jobs.find((j) => j.id === interview.jobId);
+  const profile = store.profiles.find((p) => p.id === interview.profileId);
+  const memoryById = new Map(
+    (profile?.memories || []).map((m) => [m.id, m])
+  );
   const typeLabel = interview.title || TYPE_LABELS[interview.type] || "Interview";
   const stamp = new Date(interview.createdAt).toLocaleDateString(undefined, {
     year: "numeric",
@@ -2723,7 +2945,10 @@ function SummaryOverlay({
   });
   const hasTranscript = (interview.transcript || []).length > 0;
   const showMemoriesSection =
-    memoriesWaiting || proposedMemories.length > 0;
+    memoriesWaiting ||
+    proposedMemories.length > 0 ||
+    memoriesStatus === "No proposals" ||
+    memoriesStatus === "Failed";
 
   return (
     <div className="stage-overlay">
@@ -2813,27 +3038,55 @@ function SummaryOverlay({
               className={`proposed-memories${memoriesWaiting ? " waiting" : ""}`}
             >
               {memoriesWaiting ? (
-                "Waiting on feedback…"
+                "Drafting memories…"
+              ) : proposedMemories.length === 0 ? (
+                <div className="proposed-memories-empty">
+                  Nothing new from this interview that wasn't already on the
+                  résumé or in existing memories.
+                </div>
               ) : (
-                proposedMemories.map((pm) => (
-                  <div key={pm.id} className="pmem">
-                    <div className="pmem-text">{pm.text}</div>
-                    <div className="pmem-actions">
-                      <button
-                        className="pmem-btn"
-                        onClick={() => onReject(pm)}
-                      >
-                        Skip
-                      </button>
-                      <button
-                        className="pmem-btn accept"
-                        onClick={() => onAccept(pm)}
-                      >
-                        Accept
-                      </button>
+                proposedMemories.map((pm) => {
+                  const replaced = pm.replacesId
+                    ? memoryById.get(pm.replacesId)
+                    : undefined;
+                  return (
+                    <div
+                      key={pm.id}
+                      className={`pmem${pm.replacesId ? " update" : ""}`}
+                    >
+                      <div className="pmem-body">
+                        {pm.replacesId && (
+                          <div className="pmem-kind">Update</div>
+                        )}
+                        <div className="pmem-text">{pm.text}</div>
+                        {replaced && (
+                          <div className="pmem-replaces">
+                            <span className="pmem-replaces-label">
+                              Replaces
+                            </span>
+                            <span className="pmem-replaces-text">
+                              {replaced.text}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="pmem-actions">
+                        <button
+                          className="pmem-btn"
+                          onClick={() => onReject(pm)}
+                        >
+                          Skip
+                        </button>
+                        <button
+                          className="pmem-btn accept"
+                          onClick={() => onAccept(pm)}
+                        >
+                          {pm.replacesId ? "Apply" : "Accept"}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

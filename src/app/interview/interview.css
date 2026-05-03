@@ -967,6 +967,30 @@
 }
 .iv-workspace .stage-counter b { color: var(--text); font-weight: 500; }
 
+.iv-workspace .stage-end {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.iv-workspace .stage-end:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--text);
+}
+.iv-workspace .stage-end:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .iv-workspace .chat-log {
   display: flex;
   flex-direction: column;
@@ -1373,10 +1397,59 @@
   opacity: 0;
   transform: translateY(-6px);
 }
+.iv-workspace .proposed-memories-empty {
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+.iv-workspace .pmem.update {
+  border-color: color-mix(in oklab, var(--accent) 35%, var(--border));
+  background: color-mix(in oklab, var(--accent) 4%, var(--surface));
+}
+.iv-workspace .pmem-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.iv-workspace .pmem-kind {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--accent) 80%, var(--text));
+}
 .iv-workspace .pmem-text {
   font-size: 14px;
   line-height: 1.55;
   color: var(--text);
+}
+.iv-workspace .pmem-replaces {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.iv-workspace .pmem-replaces-label {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-2, var(--muted));
+  flex-shrink: 0;
+}
+.iv-workspace .pmem-replaces-text {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in oklab, var(--muted) 60%, transparent);
 }
 .iv-workspace .pmem-actions { display: flex; gap: 6px; }
 .iv-workspace .pmem-btn {
