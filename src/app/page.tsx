@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Guitar, Mic, Music, Wind, LogOut } from "lucide-react";
+import { Briefcase, Guitar, Mic, Music, Wind, LogOut } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 const apps = [
@@ -25,6 +25,13 @@ const apps = [
     href: "/breathe",
     icon: Wind,
     color: "#c8b8d8",
+  },
+  {
+    name: "INTERVIEW PRACTICE",
+    description: "Mock interviews with AI feedback",
+    href: "/interview",
+    icon: Briefcase,
+    color: "#7dd3c7",
   },
   {
     name: "CHAT WITH SPOTIFY",
