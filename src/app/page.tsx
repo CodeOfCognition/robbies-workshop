@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Briefcase, Guitar, Mic, Music, Wind, LogOut } from "lucide-react";
-import { signOut } from "next-auth/react";
+import { Briefcase, Guitar, Mic, Music, Wind } from "lucide-react";
 
 const apps = [
   {
@@ -46,20 +45,11 @@ export default function Home() {
   return (
     <div className="min-h-dvh flex flex-col px-4 pt-safe">
       <header className="pt-12 pb-10">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-2 h-2 rounded-full bg-[var(--color-amber)] led-glow" />
-            <h1 className="font-[family-name:var(--font-display)] text-4xl tracking-wide text-[var(--color-text)]">
-              ROBBIE&apos;S WORKSHOP
-            </h1>
-          </div>
-          <button
-            onClick={() => signOut()}
-            className="p-2 text-[var(--color-text-faint)] hover:text-[var(--color-text-dim)] transition-colors"
-            title="Sign out"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
+        <div className="flex items-center gap-3 mb-1">
+          <div className="w-2 h-2 rounded-full bg-[var(--color-amber)] led-glow" />
+          <h1 className="font-[family-name:var(--font-display)] text-4xl tracking-wide text-[var(--color-text)]">
+            ROBBIE&apos;S WORKSHOP
+          </h1>
         </div>
         <p className="text-[var(--color-text-dim)] text-sm ml-5">
           Pick a tool
