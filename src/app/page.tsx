@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Briefcase, Guitar, Mic, Music, Wind } from "lucide-react";
+import { Briefcase, Guitar, Mic, Music, Ticket, Wind } from "lucide-react";
 
 const apps = [
   {
@@ -31,6 +31,13 @@ const apps = [
     href: "/interview",
     icon: Briefcase,
     color: "#7dd3c7",
+  },
+  {
+    name: "LIVE MUSIC NYC",
+    description: "Upcoming shows and venues",
+    href: "/live-music",
+    icon: Ticket,
+    color: "#f97373",
   },
   {
     name: "CHAT WITH SPOTIFY",
